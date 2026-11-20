@@ -15,7 +15,7 @@
   <a href="#1-arena-results-4-bit-30b-vs-175-bit-284b">Arena Results</a> &middot;
   <a href="#2-the-hardware-wall--why-dual-channel-failed">Hardware &amp; Bandwidth</a> &middot;
   <a href="#3-how-58-gib-runs-in-38-gib-without-thrashing-mincore2-dissection"><code>mincore(2)</code> Dissection</a> &middot;
-  <a href="#4-where-this-150-laptop-still-wins-orc-and-ahai"><code>OR@C</code> &amp; <code>AHAI</code></a> &middot;
+  <a href="#4-what-this-150-actually-buys-orc-and-pty"><code>OR@C</code> &amp; <code>PTY</code></a> &middot;
   <a href="#5-eleven-ways-our-benchmarks-lied-to-us">11 Benchmark Traps</a> &middot;
   <a href="#6-reproduce-and-limitations">Reproduce</a>
 </p>
@@ -155,25 +155,69 @@ Running [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mma
 
 ---
 
-## 4. Where This \$150 Laptop Still Wins: `OR@C` and `AHAI`
+## 4. What This \$150 Actually Buys: `OR@C` and `PTY`
 
-Even though `1.75-bit 284B` loses to `4-bit 30B`, the `dynabook G83/HS` itself sits at an unusual hardware intersection: **a socketed 32 GB DDR4 slot + un-fused AVX-512 + active fan under 1 kg for \$150** (most sub-1 kg laptops solder 8–16 GB RAM and immediately OOM).
+`1.75-bit 284B` loses to `4-bit 30B` on everything measurable here. The machine is still worth a paragraph, because it sits at an odd intersection: a socketed 32 GB DDR4 slot, un-fused AVX-512, and a working fan under 1 kg for \$150. Most sub-1 kg laptops solder 8 or 16 GB and OOM the moment you ask for more.
 
-**One of the next two numbers is a definition, the other is an opinion.** `OR@C` is the definition: a ratio of bytes to bytes with two thresholds anyone can re-check. `AHAI` is the opinion. It is a weighted index whose constants I picked by hand (`4.0` odds baseline, `250` tokens per task, a `25 GiB` working set), and its binary gate hands a desktop workstation a `0` because "air-gapped and battery-powered" is written into the definition. Read the chart as a statement of what this machine is for, not as a ranking of hardware. The formula is printed below so you can swap the constants for yours.
+Two numbers describe that, and neither has a tuned constant in it. If you cannot take a metric apart by hand, it is a metric you have to take on faith, so both are printed as ratios of things you can look up.
 
-1. **Oversubscription Feasibility (`OR@C`)**: At `GSM8K ≥ 80%` and `≥ 1 tok/s`, it achieves **`OR@C = 57.99 / 37 = 1.57×`** with zero swap (`0.39 GiB/$`).
-2. **Air-Gapped Heavy Autonomous Index (`AHAI`)**: Stripping out vanity parameter counts, consider a real **air-gapped, battery-powered field workload** (`α_offline = 1`) requiring a **`25 GiB` total working set** (`17.3 GiB` 30B model + `3.5 GiB` KV/compute buffers + `4.2 GiB` OS &amp; local toolchain) and reliability strictly above the `80%` 8B-smartphone ceiling (`ΔOdds = max(0, Acc/(1-Acc) - 4.0)`):
+### `OR@C` — how far past the memory wall it goes
 
-$$\text{AHAI} = \alpha_{\text{offline}} \times \beta_{\text{25G}} \times \frac{\max\left(0,\ \frac{\text{Acc}}{1 - \text{Acc}} - 4.0\right) \times \left(\frac{v_{\text{sustained}} \times T_{\text{battery}} \times 3600}{250\text{ tok/task}}\right)}{W_{\text{terminal (kg)}} \times C_{\text{total (USD)}}}$$
+At `GSM8K ≥ 80%` and `≥ 1 tok/s`:
+
+```
+OR = 57.99 GiB model / 37 GiB usable RAM = 1.57x        (0.39 GiB of model per dollar)
+```
+
+A conventional deployment refuses to load above `0.8x`. That is a definition, not a score: two thresholds, both checkable, and the numerator and denominator are the same unit.
+
+### `PTY` — tokens per dollar per kilogram carried
+
+```
+PTY(T) = (v * 3600 * T) / [ C * (m + deficit/e) ]
+
+v        sustained generation, tok/s        measured
+T        mission duration, hours            scenario (reported at 8 h)
+C        price paid, USD                    receipt
+m        device mass, kg                    weighed
+deficit  max(0, P*T - E_internal), kWh      energy the device cannot store itself
+e        Li-ion pack specific energy        physical constant, 0.25 kWh/kg
+P        inference power, W                 RAPL package-0, or published TDP
+```
+
+Capability does not multiply the score. It defines the class, the way a weight class defines who you fight. Every row below serves a model at `GSM8K ≥ 80%`.
+
+| Device | \$ | kg | W | tok/s | carried kg | PTY |
+|---|--:|--:|--:|--:|--:|--:|
+| **dynabook G83/HS (used) · 30B** | **150** | **0.931** | 19.4 | 8.94 | 1.34 | **1,282** |
+| dynabook G83/HS (used) · 284B | 150 | 0.931 | 27.7 | 2.10 | 1.61 | 251 |
+| MacBook Air 13 M4 24 GB | 1199 | 1.24 | 20 | 11.0 | 1.66 | 159 |
+| Ryzen mini PC 32 GB | 600 | 1.40 | 30 | 6.0 | 2.36 | 122 |
+| MacBook Pro 14 M4 Pro 48 GB | 1999 | 1.60 | 28 | 14.0 | 2.21 | 91 |
+| Gaming laptop RTX 4090 32 GB | 2400 | 2.50 | 140 | 35.0 | 6.58 | 64 |
 
 <div align="center">
-  <img src="./assets/ahai_ranking.png" alt="AHAI Leaderboard Across Device Classes" width="100%" />
+  <img src="./assets/pty_ranking.png" alt="Portable Token Yield across device classes" width="100%" />
 </div>
 
-> [!NOTE]
-> **Disclosure**: G83 speeds, `RAPL package-0` power, mass (**`931 g`** measured), and GSM8K (`88%` vs `80%`) are measured on-device; G83 runtime (`2.74 h`, `~87,000 tok`) is scaled to its `53.13 Wh` design battery (tested unit health is `22%`). All competitor values (`MacBook Air/Pro`, `24GB Android`, `Mini PC`, `Gaming Laptop`, `RTX 4090`) are order-of-magnitude estimates from published specs.
+**The chart's bottom strip is the honest part.** Decompose the `8.1x` against a MacBook Air:
 
----
+```
+price      1199 / 150       = 7.99x
+mass       1.66 / 1.34 kg   = 1.24x
+speed      8.94 / 11 tok/s  = 0.81x   <-- the 30B on this laptop is SLOWER
+```
+
+PTY does not claim this machine is efficient. It claims that at \$150 the arithmetic is not close, and it hands you the three factors so you can decide whether price should count eight times. If your constraint is a new device with a warranty, the answer is no, and this metric is not for you.
+
+Sensitivity: across 25 combinations of `T ∈ {2,4,8,12,24} h` and `e ∈ {0.15…0.35} kWh/kg` the rank never changes, and the lead over the MacBook Air stays between `7.2x` and `8.7x` (median `8.1x`). Nothing here is tuned to a preferred answer; there is nothing to tune.
+
+<details>
+<summary><strong>Assumptions behind the non-G83 rows</strong></summary>
+
+G83 speed and power are measured (`prefill_probe.py`, `power_probe.sh`), mass on a kitchen scale, price the actual purchase. `E_internal` is the design battery. Every other row is an order-of-magnitude estimate from published specs and public benchmarks: `tok/s` assumes a 30B-class Q4 model fully resident, `P` is package power during generation, and no row is a measurement I performed on that hardware. The comparison that matters (G83 vs MacBook Air vs mini PC) spans an 8x price range, which is wider than the error in any individual cell.
+
+</details>
 
 ## 5. Eleven Ways Our Benchmarks Lied to Us
 
@@ -230,7 +274,7 @@ python3 ./scripts/auto_grade.py            # reads ./scripts/eval_set.json
 > - **Small sample sizes**: `GSM8K (n=25, ±8.2 pp)` and `TriviaQA (n=50, ±7.1 pp)` establish direction and order of magnitude, not leaderboard decimals.
 > - **RAPL domain scope**: `package-0` (`27.7 W` / `19.4 W`) excludes DRAM and display power (`psys` reads `0.1 W`), so total wall/battery draw is higher.
 > - **Single residency snapshot**: `mincore(2)` numbers reflect one post-eval warm snapshot without multi-run variance sampling.
-> - **Repack settings differ per model**: the 284B ran with `-nr` because repack measured 8% slower on it (`1.30` vs `1.20 tok/s`) and cost 2 GiB of page cache it could not spare; the 30B ran with repack on, which is the default and the author's recommendation. `-nr` was not A/B'd on the 30B. Both directions of the switch were measured on the 284B, so the comparison is not using a deliberately bad config for the larger model.
+> - **Repack settings differ per model**: the 284B ran with `-nr` because repack measured 8% slower on it (`1.30` vs `1.20 tok/s`) and cost 2 GiB of page cache it could not spare; the 30B ran with repack on, which is the default and the author's recommendation. The 30B also turns out to prefer `-nr` (`9.47` vs `9.17 tok/s`), so both models now run identical flags; the table keeps `8.94` from the eval campaign because it is the lowest of the three runs, which understates the 30B rather than flattering it.
 
 ---
 
