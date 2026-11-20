@@ -1,0 +1,23 @@
+[
+  {"id": "01_planet", "cat": "事实", "q": "Which planet in our solar system is the largest, and roughly how many times more massive is it than Earth? Answer in two sentences."},
+  {"id": "02_oppcost", "cat": "中文", "q": "用两句话解释什么是机会成本，并举一个上班族通勤的例子。"},
+  {"id": "03_lru", "cat": "代码", "q": "Write a Python class implementing an LRU cache with O(1) get and put, using an OrderedDict. Include type hints. No explanation needed, just the code."},
+  {"id": "04_debug", "cat": "调试", "q": "This function should return the second largest unique number in a list. It is buggy: def second_largest(xs): s=sorted(xs); return s[-2]. Explain the bugs in two bullet points and give a corrected version."},
+  {"id": "05_logic", "cat": "推理", "q": "Three boxes are labelled Apples, Oranges, and Mixed. All three labels are wrong. You may draw one fruit from one box. Which box do you draw from, and how do you determine all three contents? Answer concisely."},
+  {"id": "06_math", "cat": "数学", "q": "Compute 1234 multiplied by 5678 step by step, showing the partial products, then give the final answer."},
+  {"id": "07_translate", "cat": "多语言", "q": "Translate the sentence 'The early bird catches the worm, but the second mouse gets the cheese.' into Japanese and then into French. Keep the contrast between the two halves."},
+  {"id": "08_summary", "cat": "摘要", "q": "Summarize the following in exactly one sentence of no more than 25 words: 'Large language models are trained on vast corpora and store knowledge in their parameters. Mixture-of-experts architectures activate only a small subset of parameters per token, which reduces compute but keeps total memory footprint high, making them expensive to run on consumer hardware.'"},
+
+  {"id": "09_light", "cat": "事实", "q": "What is the exact speed of light in a vacuum, in metres per second? Give the number without rounding, then say how many kilometres per second that is."},
+  {"id": "10_salt", "cat": "事实", "q": "What is the chemical formula of table salt, which two elements does it contain, and what type of chemical bond holds it together? Answer in three short sentences."},
+  {"id": "11_sql", "cat": "代码", "q": "Write a single SQL query that returns the second highest distinct salary from a table named employees with a column salary. Handle the case where no second highest value exists by returning NULL. No explanation needed."},
+  {"id": "12_regex", "cat": "代码", "q": "Write a Python regular expression that matches an email address of the form name@domain.tld, and a one-line usage example with re.match. Then state in one sentence one thing this regex does NOT handle."},
+  {"id": "13_race", "cat": "调试", "q": "Explain in two bullet points why this counter is not thread-safe: counter = 0; def increment(): global counter; counter += 1. Then give a corrected version using a lock."},
+  {"id": "14_handshake", "cat": "推理", "q": "At a party, every person shakes hands with every other person exactly once. If there are 5 people, how many handshakes occur? Show the formula you used and the result."},
+  {"id": "15_dice", "cat": "数学", "q": "Two fair six-sided dice are rolled. What is the probability that the sum is 7? Show the favourable outcomes explicitly and give the probability as a fraction."},
+  {"id": "16_margin", "cat": "中文", "q": "用三句话解释「边际效用递减」，并用喝咖啡举例说明第一杯和第四杯的差别。"},
+  {"id": "17_translate2", "cat": "多语言", "q": "Translate into German and Spanish, preserving all numbers and dates exactly: 'The bridge is 1,200 metres long and was completed in 1998.'"},
+  {"id": "18_summary2", "cat": "摘要", "q": "Compress the following into at most 20 words, keeping the causal claim intact: 'Because the model is memory-bandwidth bound rather than compute bound, adding more CPU cores does not increase token throughput once the memory bus is saturated.'"},
+  {"id": "19_json", "cat": "指令遵循", "q": "Output ONLY a valid JSON object with exactly these keys: name (string), version (integer), tags (array of two strings). No prose, no markdown fences, nothing else."},
+  {"id": "20_gold", "cat": "事实", "q": "What element has atomic number 79, what is its chemical symbol, and what is its Density in grams per cubic centimetre to one decimal place?"}
+]
