@@ -247,12 +247,12 @@ PTY does not claim a 2021 single-channel laptop is fast. It reflects a real depr
 |---|--:|--:|---|
 | `MacBook Air M4` vs G83 at `30 W` (PTY `1,023`) | `56.2` | `90%` of `120 GB/s` | inside the ceiling, breaks if Metal beats `72%` gather efficiency |
 | `MacBook Air M4` vs G83 at `19.4 W` (PTY `1,282`) | `70.4` | `113%` | above the ceiling |
-| `2021 M1 Pro` | `80.3` | `77%` of `200 GB/s` | below its ceiling, but ~2x its measured `30–45 tok/s` |
-| `M4 Pro` | `212` | `149%` of `273 GB/s` | arithmetically out of reach |
+| `2021 M1 Pro` vs `19.4 W` (`64.0` / `61%` vs `30 W`) | `80.3` | `77%` of `200 GB/s` | below its ceiling, but ~2x its measured `30–45 tok/s` |
+| `M4 Pro` vs `19.4 W` (`169.3` / `119%` vs `30 W`) | `212` | `149%` of `273 GB/s` | arithmetically out of reach under either G83 power figure |
 
-The honest reading is narrower than the table's ordering suggests. At G83's measured `19.4 W` package power the M4 Air tie needs `113%` of its bandwidth, which does not exist. At the `30 W` whole-system estimate it needs `90%`, which is high but inside the ceiling, so the M4 Air carries the least margin. It would flip only if Metal sustained `90%` of peak on a sparse gather, against the `72%` that `45 tok/s` already implies. The `2021 M1 Pro` needs a smaller fraction (`77%`) but sits twice its measured `30–45 tok/s`. Only the `M4 Pro` is out of reach under any assumption.
+The honest reading is narrower than the table's ordering suggests. At G83's measured `19.4 W` package power the M4 Air tie needs `113%` of its bandwidth, which does not exist. At the `30 W` whole-system estimate it needs `90%`, which is high but inside the ceiling, so the M4 Air carries the least margin. It would flip only if Metal sustained `90%` of peak on a sparse gather, against the `72%` that `45 tok/s` already implies. The `2021 M1 Pro` needs a smaller fraction (`77%` at `19.4 W`, `61%` at `30 W`) but still sits well above its measured `30–45 tok/s`. Only the `M4 Pro` is out of reach under any assumption.
 
-What survives every variant is the `6.3x` used-price gap. The `1.56x` PTY lead does not: at `30 W` the G83 drops to PTY `1,023`, a `1.25x` lead that holds in `23` of `25` `(T, e)` scenarios and loses one at `24 h` on `0.15 kWh/kg` cells.
+What survives every variant is the `6.3x` used-price gap. The `1.56x` PTY lead does not: at `30 W` the G83 drops to PTY `1,023`, a `1.25x` lead that holds in `23` of `25` `(T, e)` scenarios and loses two (at `24 h` on `0.15` and `0.20 kWh/kg` cells, `0.96x` and `0.99x`).
 
 <details>
 <summary><strong>Pricing &amp; Bandwidth Assumptions Behind the Non-G83 Rows</strong></summary>
