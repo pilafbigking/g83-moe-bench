@@ -329,6 +329,11 @@ python3 ./scripts/pty.py
 
 ---
 
-Measurements taken 2026-11-19 and 2026-11-20. No raw eval logs are shipped beyond the summary tables above; open an issue if you want a specific `lm-eval` sample JSONL uploaded.
+Measurements taken 2026-11-19 and 2026-11-20.
+
+The raw `lm-eval` samples behind every accuracy number are in [`./eval/`](./eval/), 1.3 MB of
+JSONL, unedited. The table recomputes from them in a dozen lines of standard-library Python;
+see [`eval/README.md`](./eval/README.md). The hand-audited TriviaQA figures are the one number
+that is not stored as data, because the audit was a person reading 50 strings.
 
 Built on [`llama-modchip`](https://github.com/synchopate/llama-modchip) by Synchopate, who also produced the `MaxQ-v4` quantization measured here.
