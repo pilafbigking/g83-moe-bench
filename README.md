@@ -24,12 +24,14 @@
 
 ---
 
-A used **\$150** ultraportable laptop (`dynabook G83/HS`, **931 g** weighed, `38 GiB` usable RAM, **0 B swap**) can run a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) at **2.10 tok/s** (Top-4) / **1.65 tok/s** (Top-6) with zero OOMs and zero pruning.
+A used **\$150** ultraportable laptop (`dynabook G83/HS`, **931 g** on a kitchen scale, `38 GiB` installed / `37 GiB` usable, **0 B swap**) runs a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) at **2.10 tok/s** (Top-4) / **1.65 tok/s** (Top-6). No OOM, no swap, no experts dropped.
 
-Then we ran an unpruned **17.28 GiB `Qwen3-30B-A3B-Instruct-2507 @ Q4_K_M`** on the **exact same machine, binary, and flags**:
+> **What this is not.** The engine is [Synchopate's `llama-modchip`](https://github.com/synchopate/llama-modchip) and the weights are his `MaxQ-v4` GGUF. Neither is mine. Everything below is measurement of that stack, done to find out where it stops being worth the trouble.
+
+The same laptop then ran an unpruned **17.28 GiB `Qwen3-30B-A3B-Instruct-2507 @ Q4_K_M`**: same binary, same context and batching flags, each model at whichever repack setting measured faster for it (see §2).
 
 > [!IMPORTANT]
-> **Key Takeaway**: Sub-2-bit quantization on a giant MoE delivers **zero measurable accuracy upside** over a native 4-bit 30B MoE on the same laptop—while costing **4.3× slower generation**, **22× worse time-to-first-token**, and **6.0× higher CPU package energy per token**. You cannot quantize the high-precision dense skeleton (`4.06 GB/token` across 43 layers alone).
+> **Key Takeaway**: Sub-2-bit quantization on a giant MoE delivers **zero measurable accuracy upside** over a native 4-bit 30B MoE on the same laptop — the gap is `+8 pp` on both benchmarks, which is one standard error at these sample sizes. What it does cost is **4.3× slower generation**, **22× worse time-to-first-token**, and **6.0× higher CPU package energy per token**. You cannot quantize the high-precision dense skeleton (`4.06 GB/token` across 43 layers alone).
 
 | Metric | 284B @ 1.75 bpw (`MaxQ-v4`) | 30B-A3B @ `Q4_K_M` | Delta |
 |---|--:|--:|--:|
@@ -41,8 +43,8 @@ Then we ran an unpruned **17.28 GiB `Qwen3-30B-A3B-Instruct-2507 @ Q4_K_M`** on 
 | Time-to-first-token (20 tok prompt) | ~20 s | **0.9 s** | **22×** |
 | Power (`RAPL package-0`, excl. DRAM/iGPU) | 27.7 W | **19.4 W** | — |
 | Energy per token (`package-0` only) | 13.2 J/tok | **2.2 J/tok** | **6.0×** |
-| GSM8K 5-shot (`n=25`) | 80.0% ± 8.2 (K4 &amp; K6) | **88.0% ± 6.6** (`strict 84.0%`) | +8 pp |
-| TriviaQA 5-shot (`n=50`, raw EM / audited) | 52.0% / **64.0%** (`32/50`, K6) | **60.0%** / **72.0%** (`36/50`) | +8 pp |
+| GSM8K 5-shot (`n=25`) | 80.0% ± 8.2 (K4 &amp; K6) | 88.0% ± 6.6 (`strict 84.0%`) | +8 pp (1 SE) |
+| TriviaQA 5-shot (`n=50`, raw EM / audited) | 52.0% / 64.0% (`32/50`, K6) | 60.0% / 72.0% (`36/50`) | +8 pp (1 SE) |
 | RAM residency (`mincore(2)`) | **61.3%** (`routed_experts 58.8%`) | **100%** | — |
 
 ---
@@ -70,12 +72,14 @@ bytes_per_token = sum(dense tensors per layer) + sum(all routed experts) * (top_
 - **GSM8K (5-shot, `n=25`)**: `284B @ 1.75 bpw` scores **`80.0% ± 8.2`** (`20/25`, identical at Top-4 and Top-6, and identical under `strict` and `flexible` extract) — matching `Llama-3-8B` (`79.6%`). Every single failure gets the intermediate reasoning right and collapses on the **final step** (dropping orders of magnitude like `70` for `70000`, or answering the wrong target quantity). `30B @ Q4_K_M` scores **`88.0% ± 6.6`** (`22/25`; `strict 84.0%`).
 - **TriviaQA (5-shot, `rc.nocontext`, `n=50`)**: Raw `lm-eval` `exact_match` gives `52.0% ± 7.1` (`26/50`) vs `60.0% ± 7.0` (`30/50`). A line-by-line audit of all 50 responses shows **both models suffered an identical `-12 pp` (`-6` question) string-matching penalty**, lifting audited accuracy to **`64.0%` (`32/50`) vs `72.0%` (`36/50`)**.
 
+**Read those as a tie, not a win.** `80 vs 88` and `52 vs 60` are the same 8-point gap in the same direction, which is weak evidence that it is real, and at `n=25` / `n=50` the standard error is about 7–8 points, which is not enough to call it. Pool the two tasks and it is `46/75 = 61.3%` against `52/75 = 69.3%`: still roughly one standard error. The claim worth defending is not "the 30B is more accurate". It is "the 284B is not more accurate, at 4.3× the cost per token", and that one does not need a significance test.
+
 <details>
 <summary><strong>Deep Dive: Full 50-Sample TriviaQA Audit &amp; Top-K 6 vs 4 Regressions</strong></summary>
 
 1. **284B (K6) false negatives (`26/50 → 32/50 = 64.0%`)**: `#04 ' breast cancer'` (gold `cancer`), `#08 ' Nikkei 225'` (gold `Nikkei`), `#21 ' Highway 61'` (gold `61`), `#37 ' “Stars on 45”'` (curly quotes broke EM), `#42 ' Manticore'` (missing article `A/The`), `#43 ' Cyclops'` (singular vs `Cyclopes`). *Excluded single-letter `' J'` truncation on `J.G. Ballard` (`#34`).*
 2. **30B-A3B (Q4) false negatives (`30/50 → 36/50 = 72.0%`)**: `#00 ' Ross Bagdasarian Sr'` (real name of `David Seville`), `#08 ' Nikkei 225'`, `#15 ' George H'` (`George H.W. Bush` truncated at `.`; strictly excluding `#15` yields `35/50 = 70.0%`), `#21 ' Highway 61'`, `#33 ' 48 Hrs'` (official title *48 Hrs.* stripped at `.`), `#40 ' The deep sea'` (gold `Underwater`/`Undersea`). *Excluded `' H'` (`#02`) and `' J'` (`#34`).*
-3. **Top-K 6 → 4 on 284B (20-prompt internal suite)**: Coding (LRU cache, SQL second-highest salary) remained identical, while objective checks dropped `9/9 → 7/9` (`1234×5678` lost carries even at 1200 tokens outputting `7000000?`, and *"the second mouse gets the cheese"* translated `"second"` into Japanese as `遅い` *slow mouse* instead of `二番目` *second*).
+3. **Top-K 6 → 4 on 284B (20-prompt internal suite)**: Coding (LRU cache, SQL second-highest salary) remained identical, while objective checks dropped `9/9 → 7/9`. The 4-digit addition `96,252 + 740,400 + 6,170,000` lost its carries even with a 1,200-token budget, ending on `7000000?` instead of `7,006,652`; and *"the second mouse gets the cheese"* rendered `"second"` into Japanese as `遅い` (*slow mouse*) instead of `二番目` (*second*).
 
 </details>
 
@@ -115,9 +119,9 @@ Measured via [`./scripts/gate_a/run_gate_a.sh`](./scripts/gate_a/run_gate_a.sh) 
 
 ## 3. How 58 GiB Runs in 38 GiB Without Thrashing: `mincore(2)` Dissection
 
-With a 39% RAM deficit and 256 routed experts per layer, uniform activation over 200 tokens would touch $1 - (1 - 4/256)^{200} = 95.7\%$ of experts and collapse throughput to **0.05 tok/s**. Instead, steady-state generation added only **3,009–3,661 major page faults** over 48 tokens (on top of `11,416` load faults).
+With a 39% RAM deficit and 256 routed experts per layer, uniform activation over 200 tokens would touch $1 - (1 - 4/256)^{200} = 95.7\%$ of experts, which is 54 of 58 GiB and leaves no working set for the OS to hold. It does not happen: steady-state generation added only **3,009–3,661 major page faults** over 48 tokens, on top of `11,416` load faults. Something is keeping a stable subset resident, so the question was which subset.
 
-Running [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mmap(PROT_READ, MAP_SHARED)` + `mincore(2)`, 3-second non-intrusive scan across all `43 × 256 = 11,008` expert slots after 20+ mixed prompts) reveals the exact mechanism:
+Running [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mmap(PROT_READ, MAP_SHARED)` + `mincore(2)`, 3-second non-intrusive scan across all `43 × 256 = 11,008` expert slots after 20+ mixed prompts) shows what:
 
 <div align="center">
   <img src="./assets/expert_residency_heatmap.png" alt="43 x 256 Expert Residency Heatmap" width="100%" />
@@ -154,6 +158,8 @@ Running [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mma
 ## 4. Where This \$150 Laptop Still Wins: `OR@C` and `AHAI`
 
 Even though `1.75-bit 284B` loses to `4-bit 30B`, the `dynabook G83/HS` itself sits at an unusual hardware intersection: **a socketed 32 GB DDR4 slot + un-fused AVX-512 + active fan under 1 kg for \$150** (most sub-1 kg laptops solder 8–16 GB RAM and immediately OOM).
+
+**One of the next two numbers is a definition, the other is an opinion.** `OR@C` is the definition: a ratio of bytes to bytes with two thresholds anyone can re-check. `AHAI` is the opinion. It is a weighted index whose constants I picked by hand (`4.0` odds baseline, `250` tokens per task, a `25 GiB` working set), and its binary gate hands a desktop workstation a `0` because "air-gapped and battery-powered" is written into the definition. Read the chart as a statement of what this machine is for, not as a ranking of hardware. The formula is printed below so you can swap the constants for yours.
 
 1. **Oversubscription Feasibility (`OR@C`)**: At `GSM8K ≥ 80%` and `≥ 1 tok/s`, it achieves **`OR@C = 57.99 / 37 = 1.57×`** with zero swap (`0.39 GiB/$`).
 2. **Air-Gapped Heavy Autonomous Index (`AHAI`)**: Stripping out vanity parameter counts, consider a real **air-gapped, battery-powered field workload** (`α_offline = 1`) requiring a **`25 GiB` total working set** (`17.3 GiB` 30B model + `3.5 GiB` KV/compute buffers + `4.2 GiB` OS &amp; local toolchain) and reliability strictly above the `80%` 8B-smartphone ceiling (`ΔOdds = max(0, Acc/(1-Acc) - 4.0)`):
@@ -213,6 +219,9 @@ python3 ./scripts/prefill_probe.py http://127.0.0.1:8080
 
 # 5. Power sampling (RAPL package-0; psys domain unimplemented on this board)
 sudo bash ./scripts/power_probe.sh
+
+# 6. The 20-prompt internal suite and its pass/fail grader (single-model only, see §5 bug 10)
+python3 ./scripts/auto_grade.py            # reads ./scripts/eval_set.json
 ```
 
 > [!WARNING]
@@ -221,3 +230,10 @@ sudo bash ./scripts/power_probe.sh
 > - **Small sample sizes**: `GSM8K (n=25, ±8.2 pp)` and `TriviaQA (n=50, ±7.1 pp)` establish direction and order of magnitude, not leaderboard decimals.
 > - **RAPL domain scope**: `package-0` (`27.7 W` / `19.4 W`) excludes DRAM and display power (`psys` reads `0.1 W`), so total wall/battery draw is higher.
 > - **Single residency snapshot**: `mincore(2)` numbers reflect one post-eval warm snapshot without multi-run variance sampling.
+> - **Repack settings differ per model**: the 284B ran with `-nr` because repack measured 8% slower on it (`1.30` vs `1.20 tok/s`) and cost 2 GiB of page cache it could not spare; the 30B ran with repack on, which is the default and the author's recommendation. `-nr` was not A/B'd on the 30B. Both directions of the switch were measured on the 284B, so the comparison is not using a deliberately bad config for the larger model.
+
+---
+
+Measurements taken 2026-11-19 and 2026-11-20. No raw logs are shipped in this repo beyond the tables above; if you want a specific one, ask and it goes up.
+
+Built on [`llama-modchip`](https://github.com/synchopate/llama-modchip) by Synchopate, who also produced the `MaxQ-v4` quantization being measured. The 20-prompt failure sample in §1 came out of a suite written for this test, not a published benchmark.
