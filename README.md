@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/hero_banner.png" alt="A 4-bit 30B beats a 1.75-bit 284B on the same 38 GB laptop" width="100%" />
+<img src="./assets/hero_banner.png" alt="A 1.75-bit 284B moves the same bytes per token as a 4-bit 8B and runs 2.1x slower" width="100%" />
 
 <br/><br/>
 
