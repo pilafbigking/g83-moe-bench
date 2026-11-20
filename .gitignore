@@ -4,3 +4,4 @@ __pycache__/
 *.pyo
 *.gguf
 *.log
+pty_results.json

@@ -297,6 +297,9 @@ sudo bash ./scripts/power_probe.sh
 
 # 6. The 20-prompt internal suite and its pass/fail grader (single-model only, see §5 bug 10)
 python3 ./scripts/auto_grade.py            # reads ./scripts/eval_set.json
+
+# 7. Recompute the PTY table, its term-by-term attribution and the 25-scenario sweep
+python3 ./scripts/pty.py
 ```
 
 > [!WARNING]
