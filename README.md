@@ -5,7 +5,7 @@
 <br/><br/>
 
 [![Hardware](https://img.shields.io/badge/Hardware-dynabook_G83%2FHS_(931g%2C_%24150)-133C55?style=flat-square)](./README.md#2-the-hardware-wall--why-dual-channel-failed)
-[![RAM](https://img.shields.io/badge/RAM-40_GB_(38_GiB_MemTotal%2C_0_Swap)-2E6F95?style=flat-square)](./README.md#2-the-hardware-wall--why-dual-channel-failed)
+[![RAM](https://img.shields.io/badge/RAM-40_GiB_(38_GiB_MemTotal%2C_0_Swap)-2E6F95?style=flat-square)](./README.md#2-the-hardware-wall--why-dual-channel-failed)
 [![CPU](https://img.shields.io/badge/CPU-i5--1135G7_AVX--512_Intact-475569?style=flat-square)](./README.md#2-the-hardware-wall--why-dual-channel-failed)
 [![Kernel](https://img.shields.io/badge/Linux-6.8_MGLRU_0x0007-133C55?style=flat-square)](./README.md#3-how-58-gib-runs-in-38-gib-without-thrashing-mincore2-dissection)
 [![Finding](https://img.shields.io/badge/Verdict-84%25_of_284B_Traffic_Is_Unquantized-C8553D?style=flat-square)](./README.md#1-arena-results-284b-vs-30b-vs-8b)
@@ -24,7 +24,7 @@
 
 ---
 
-A used **\$150** ultraportable laptop (`dynabook G83/HS`, **931 g** on a kitchen scale, `40 GB` physical RAM / `38 GiB MemTotal` / `37 GiB` available, **0 B swap**) runs a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) at **2.10 tok/s** (Top-4) / **1.65 tok/s** (Top-6). No OOM, no swap, no experts dropped.
+A used **\$150** ultraportable laptop (`dynabook G83/HS`, **931 g** on a kitchen scale, `40 GiB` physical RAM (8 GiB soldered + 32 GiB SO-DIMM) / `38 GiB MemTotal` / `37 GiB` available, **0 B swap**) runs a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) at **2.10 tok/s** (Top-4) / **1.65 tok/s** (Top-6). No OOM, no swap, no experts dropped.
 
 > **What this is not.** The engine is [Synchopate's `llama-modchip`](https://github.com/synchopate/llama-modchip) and the weights are his `MaxQ-v4` GGUF. Neither is mine. Everything below is measurement of that stack against two `Q4_K_M` baselines (`Qwen3-30B-A3B` and `Llama-3.1-8B`), done to find out where sub-2-bit oversubscription stops being worth the trouble.
 
@@ -41,7 +41,7 @@ All three models ran on the same binary (`llama-server-modchip` b12416, `-t 4 -t
 | Repack setting (main eval) | `-nr` (no-repack) | repack on (`-nr` A/B: `9.47`) | `-nr` (no-repack) |
 | Generation speed (short ctx) | 2.10 tok/s (K4) / 1.65 (K6) | **8.94 tok/s** (`9.47` w/ `-nr`) | 4.46 tok/s (`2.1×` vs 284B) |
 | Generation speed (~734 tok ctx) | ~1.7 tok/s | **6.94 tok/s** (`7.18` w/ `-nr`) | 4.10 tok/s |
-| Effective DRAM BW (% of `21.5 GB/s`) | 11.7 GB/s (**55%**) | 17.2 GB/s (**80%**; `85%` `-nr`) | **20.6 GB/s** (**96%**) |
+| Effective bytes/s, DRAM+NVMe (% of `21.5 GB/s`) | 11.7 GB/s (**55%**) | 17.2 GB/s (**80%**; `85%` `-nr`) | **20.6 GB/s** (**96%**) |
 | Prefill (~700 tok) | 7.82 tok/s (`90.1 s`) | **35.01 tok/s** (`21.0 s`) | 33.49 tok/s (`21.9 s`) |
 | Short-prompt TTFT | ~20.0 s (`20 tok`) | **0.9 s** (`18 tok`) | 1.5 s (`45 tok`) |
 | Power / energy (`RAPL package-0` only) | 27.7 W (`13.2 J/tok`) | **19.4 W** (`2.2 J/tok`, `6.0×`) | *not sampled* |
@@ -65,7 +65,7 @@ Using a single uniform byte-accounting rule across all three models via [`./scri
 bytes_per_token = sum(blk_dense) + output_head + sum(routed_experts) * (top_k / n_expert)
 ```
 
-| Model | On disk | Dense + Head | Routed Experts | Total / tok | Decode tok/s | Eff. GB/s | % of `21.5 GB/s` bus |
+| Model | On disk | Dense + Head | Routed Experts | Total / tok | Decode tok/s | Eff. bytes/s | % of `21.5 GB/s` bus |
 |---|--:|--:|--:|--:|--:|--:|--:|
 | `DeepSeek-V4-Flash` 284B (K4, `-nr`) | 57.99 GiB | 4.69 GB (84.0%) | 0.89 GB (16.0%) | **5.58 GB** | 2.10 | 11.7 | **55%** *(50% of 23.5 peak)* |
 | `Llama-3.1-8B` @ `Q4_K_M` (`-nr`) | 4.58 GiB | 4.62 GB (100%) | 0 GB | **4.62 GB** | 4.46 | **20.6** | **96%** *(88% of 23.5 peak)* |
@@ -120,7 +120,7 @@ All three models on the same two `lm-eval 0.4.13` (`5-shot greedy`, `/v1/complet
 
 Measured via [`./scripts/gate_a/run_gate_a.sh`](./scripts/gate_a/run_gate_a.sh) before loading any model:
 
-- **Asymmetric rank lock**: Populating `32 GB DDR4-3200 2R` alongside the soldered `8 GB DDR4-3200 1R` did not trigger Intel Tiger Lake flex-mode interleaving. Across working sets from `0.25 GiB` to `32 GiB`, 4-thread read bandwidth stayed flat at **`18.87–21.50 GB/s`** (~84% of single-channel `25.6 GB/s` peak, `23.51 GB/s` at small in-cache/small-WS sweeps) with `110.5 ns` random pointer-chasing latency.
+- **Asymmetric rank lock**: Populating `32 GiB DDR4-3200 2R` alongside the soldered `8 GiB DDR4-3200 1R` did not trigger Intel Tiger Lake flex-mode interleaving. Across working sets from `0.25 GiB` to `32 GiB`, 4-thread read bandwidth stayed flat at **`18.87–21.50 GB/s`** (~84% of single-channel `25.6 GB/s` peak, `23.51 GB/s` at small in-cache/small-WS sweeps) with `110.5 ns` random pointer-chasing latency.
 - **Un-fused AVX-512 & zero thermal throttling**: All `avx512` extensions (`vnni`, `vpopcntdq`, `vbmi2`, etc.) are active in BIOS; a 3-minute full load held **3.7–3.8 GHz at 66–77 °C** (AC power).
 - **NVMe vs RAM gap (`392×`)**: Samsung `MZVLQ256HAJD` delivers `2,183.5 MB/s` seq 1M QD8, **`54.9 MB/s` (`14,063 IOPS`)** random 4K QD1, and `462.5 MB/s` (`118,396 IOPS`) random 4K QD32.
 - **Why `--repack` and `-t 8` fail**: At `4` threads the single memory channel is saturated. Enabling SMT (`-t 8`) crashes speed **3.6×** (`2.11 → 0.59 tok/s`) due to barrier convoys, while `--repack` allocates `+2 GiB` of anonymous RAM—evicting `2 GiB` of experts from page cache on 284B K6 (`1.30 → 1.20 tok/s`) and slightly slowing 30B vs. `-nr` (`9.17` vs `9.47 tok/s`).
@@ -132,7 +132,7 @@ Measured via [`./scripts/gate_a/run_gate_a.sh`](./scripts/gate_a/run_gate_a.sh) 
 |---|---|
 | Machine | `dynabook G83/HS` (`931 g` weighed on kitchen scale; ~$150 used) |
 | CPU | Intel Core i5-1135G7 (4C/8T, Tiger Lake-U, `8 MiB` L3, `performance` governor + turbo) |
-| Memory | `40 GB` physical (`32 GB 2R` + `8 GB 1R` DDR4-3200; `38 GiB MemTotal` / `37 GiB` available), **0 B swap** |
+| Memory | `40 GiB` physical (`32 GiB 2R` SO-DIMM + `8 GiB 1R` soldered, DDR4-3200; `38 GiB MemTotal` / `37 GiB` available), **0 B swap** |
 | Storage | Samsung `MZVLQ256HAJD-00000` 256 GB NVMe (`110 GiB` Linux ext4 partition) |
 | OS / Kernel | Ubuntu 24.04.5 LTS, kernel `6.8.0-139-generic`, MGLRU `/sys/kernel/mm/lru_gen/enabled = 0x0007`, THP `madvise` |
 | Battery | Design capacity `53.13 Wh` (unit tested at `22%` health / `11.64 Wh`; runtime figures scaled to `53.13 Wh`) |
@@ -185,7 +185,7 @@ Running [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mma
 
 ## 4. What This \$150 Actually Buys: `OR@C` and `PTY`
 
-`1.75-bit 284B` loses to `4-bit 30B` on everything measurable here. The machine itself is still unusual hardware: a socketed `32 GB` DDR4 slot, un-fused AVX-512, and active fan cooling at **`931 g`** for **\$150** (most sub-1 kg laptops solder `8` or `16 GB` and OOM the moment you ask for a `17 GiB` model).
+`1.75-bit 284B` loses to `4-bit 30B` on everything measurable here. The machine itself is still unusual hardware: a socketed `32 GiB` DDR4 slot, un-fused AVX-512, and active fan cooling at **`931 g`** for **\$150** (most sub-1 kg laptops solder `8` or `16 GiB` and OOM the moment you ask for a `17 GiB` model).
 
 Two simple ratios describe that—neither uses tuned multipliers or binary gates:
 
@@ -241,7 +241,18 @@ vs. 2021 M1 Pro 32GB ($850 used est.)    = 2.01x  (1,282 vs 639)
   from speed      (8.94/40 tok/s)        = 0.22x
 ```
 
-PTY does not claim a 2021 single-channel laptop is fast—it reflects a real depreciation asymmetry: off-lease business ultrabooks with socketed RAM lose ~90% of their original price in 4–5 years, whereas 24–32 GB Apple Silicon machines hold ~35–75% of MSRP on the secondary market. Even priced all-used (`$150` vs. `$950` for an M4 Air or `$850` for a same-year M1 Pro) and credited with `~40–75 tok/s` on `30B-A3B Q4`, the G83 stays `#1` across all 25 `(T, e)` cells at `19.4 W` package power (`1.40×–1.68×` lead over M4 Air). Under a **`30.0 W` whole-system power** sensitivity check (modeling DRAM + display draw alongside the CPU), its `8 h` lead narrows to **`1.25×`** (`PTY = 1,023`), winning `23/25` scenarios and dipping slightly behind the more power-efficient M4 Air (`0.96×`) only on an extreme `24 h` / `0.15 kWh/kg` low-density-battery carry.
+PTY does not claim a 2021 single-channel laptop is fast. It reflects a real depreciation asymmetry: off-lease business ultrabooks with socketed RAM lose ~90% of their original price in 4–5 years, while 24–32 GB Apple Silicon machines hold 35–75% of MSRP on the secondary market. Only the G83 column is measured; peer speed, price and power are all estimates. So it is worth stating what would have to be true for the ranking to flip, in the unit that decides it, the fraction of peak bandwidth a peer must sustain on a `1.92 GB/tok` workload:
+
+| Tie requires | tok/s | of peak BW | verdict |
+|---|--:|--:|---|
+| `MacBook Air M4` vs G83 at `30 W` (PTY `1,023`) | `56.2` | `90%` of `120 GB/s` | inside the ceiling, breaks if Metal beats `72%` gather efficiency |
+| `MacBook Air M4` vs G83 at `19.4 W` (PTY `1,282`) | `70.4` | `113%` | above the ceiling |
+| `2021 M1 Pro` | `80.3` | `77%` of `200 GB/s` | below its ceiling, but ~2x its measured `30–45 tok/s` |
+| `M4 Pro` | `212` | `149%` of `273 GB/s` | arithmetically out of reach |
+
+The honest reading is narrower than the table's ordering suggests. At G83's measured `19.4 W` package power the M4 Air tie needs `113%` of its bandwidth, which does not exist. At the `30 W` whole-system estimate it needs `90%`, which is high but inside the ceiling, so the M4 Air carries the least margin. It would flip only if Metal sustained `90%` of peak on a sparse gather, against the `72%` that `45 tok/s` already implies. The `2021 M1 Pro` needs a smaller fraction (`77%`) but sits twice its measured `30–45 tok/s`. Only the `M4 Pro` is out of reach under any assumption.
+
+What survives every variant is the `6.3x` used-price gap. The `1.56x` PTY lead does not: at `30 W` the G83 drops to PTY `1,023`, a `1.25x` lead that holds in `23` of `25` `(T, e)` scenarios and loses one at `24 h` on `0.15 kWh/kg` cells.
 
 <details>
 <summary><strong>Pricing &amp; Bandwidth Assumptions Behind the Non-G83 Rows</strong></summary>
@@ -313,6 +324,7 @@ python3 ./scripts/pty.py
 > - **8B chat template**: `Llama-3.1-8B-Instruct` ran through `/v1/completions` without its chat template (same path as 284B/30B); treat its `60%` / `66%` scores as lower bounds.
 > - **RAPL domain scope**: `package-0` (`27.7 W` / `19.4 W`) excludes DRAM and display power (`psys` reads `0.1 W`), so wall/battery draw is higher (modeled via the `30 W` sensitivity check in `pty.py`).
 > - **Single residency snapshot & no MGLRU A/B**: `mincore(2)` numbers reflect one post-eval warm snapshot (`lru_gen=0x0007`), without an `lru_gen=0` A/B run.
+> - **PTY peer rows are estimates**: only the G83 column is measured; peer speed, price and power are all estimates. Break-even in §4 shows the M4 Air and M1 Pro rows are within reach of a tie at whole-system power, so read PTY as "price dominates by ~6x, everything else is a wash" (see §4).
 > - **Repack flag asymmetry in main eval**: `284B` and `8B` ran `-nr`; `30B` ran default repack during the main eval (`8.94 tok/s`), and later measured faster with `-nr` (`9.47 tok/s`), so the main table understates `30B` slightly.
 
 ---
