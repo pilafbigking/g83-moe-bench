@@ -14,7 +14,7 @@ during the runs on 2026-11-19 and 2026-11-20.
 | `30b-q4-triviaqa-5shot-n50.jsonl` | Qwen3-30B-A3B `Q4_K_M`, repack | TriviaQA, 5-shot | 50 | 0.600 |
 | `8b-q4-triviaqa-5shot-n50.jsonl` | Llama-3.1-8B `Q4_K_M`, `-nr` | TriviaQA, 5-shot | 50 | 0.660 |
 
-## Two things that look wrong and are not
+## Notes on the files
 
 **The GSM8K files hold 50 rows for 25 questions.** `lm-eval` writes one row per
 `(doc, filter)` pair, and GSM8K registers two filters, `strict-match` and
@@ -24,8 +24,8 @@ during the runs on 2026-11-19 and 2026-11-20.
 **The TriviaQA numbers here are the raw ones.** The hand-audited figures in the top-level
 README (`64.0%` and `72.0%`) are a line-by-line review of these same 50 responses and are
 not stored as data anywhere, because the audit was a person reading the strings. If you
-disagree with a row in that audit, the raw response is in these files and the argument is
-about the string comparison, not about the model.
+disagree with a row in that audit, the raw response is in these files so you can inspect
+the exact strings yourself.
 
 ## Recompute the table
 
@@ -51,8 +51,8 @@ No dependencies beyond the standard library. Each line is one JSON object with `
 
 - **ARC / HellaSwag / MMLU / GPQA**: `llama-server-modchip` b12416 ignores `echo=true` and
   returns no prompt `logprobs`, so the four-choice loglikelihood tasks cannot be scored at
-  all. An early ARC run produced `0.25` from four `-inf` options; it is deliberately not
-  shipped because it looks like a result.
+  all. An early ARC run produced `0.25` from four `-inf` options; it isn't shipped here
+  because a 0.25 row looks like a real score at a glance.
 - **The 20-prompt internal suite**: budget-sensitive (a 220-token cap truncated the verbose
   model and passed the concise one), so it is not comparable across models. The grader is in
   `../scripts/auto_grade.py` if you want to run it on a single model.
