@@ -47,6 +47,8 @@ The same laptop then ran an unpruned **17.28 GiB `Qwen3-30B-A3B-Instruct-2507 @ 
 | TriviaQA 5-shot (`n=50`, raw EM / audited) | 52.0% / 64.0% (`32/50`, K6) | 60.0% / 72.0% (`36/50`) | +8 pp (1 SE) |
 | RAM residency (`mincore(2)`) | **61.3%** (`routed_experts 58.8%`) | **100%** | — |
 
+A plain 8B at `Q4` was added afterwards as a floor, and it broke the framing: it moves **the same bytes per token as the 284B** (`4.92` vs `4.95 GB`) and runs **2.1× faster**, with no resolvable accuracy difference against the 284B on either benchmark. Details in §1.
+
 ---
 
 ## 1. Arena Results: 4-bit 30B vs 1.75-bit 284B
@@ -54,6 +56,22 @@ The same laptop then ran an unpruned **17.28 GiB `Qwen3-30B-A3B-Instruct-2507 @ 
 <div align="center">
   <img src="./assets/arena_dashboard.png" alt="4-bit 30B vs 1.75-bit 284B Dashboard" width="100%" />
 </div>
+
+### Three model sizes on one machine, and the one that is fastest
+
+Adding a plain dense 8B at `Q4` produced the result that reframes everything below it.
+
+| Model | on disk | bytes / token | tok/s | GB/s delivered | of 23.5 GB/s peak |
+|---|--:|--:|--:|--:|--:|
+| `DeepSeek-V4-Flash` 284B @ 1.75 bpw | 57.99 GiB | 4.95 GB | 2.10 | 10.4 | **44%** |
+| `Qwen3-30B-A3B` @ `Q4_K_M` | 17.28 GiB | 1.66 GB | **8.94** | 14.8 | 63% |
+| `Llama-3.1-8B` @ `Q4_K_M` | 4.58 GiB | 4.92 GB | 4.46 | 21.9 | **93%** |
+
+**A 284B at 1.75 bits and an 8B at 4 bits move the same number of bytes per token** — 4.95 against 4.92 GB, 0.6% apart — and the 8B is **2.1× faster**. Identical traffic, twice the speed.
+
+The difference is the access pattern, not the arithmetic. A dense matmul walks the weight matrix in order, the prefetcher keeps up, and the core reaches 93% of what the bus can deliver. An MoE `mul_mat_id` gathers from 256 expert slots in a different order every token, and each gather starts a stream the prefetcher has never seen. Measured across the three: `93%` dense, `63%` at top-8 of 128, `44%` at top-4 of 256. **Sparser models press less of the bus, and no quantization setting changes that**, because quantization removes bytes and leaves the pattern alone.
+
+Which is the real problem with the `1.75-bit` label. The label describes the experts. The experts are **18% of the bytes you move per token** (`851` of `4,725 MiB` at top-4). The other `82%` is the dense skeleton, which the quantizer never touched because it cannot go below `Q4` without breaking the model. Two hundred and eighty-four billion parameters, and four fifths of your bandwidth goes to re-reading `3.8 GiB` of attention every token.
 
 ### Why 1.75-bit 284B Loses on Speed and Latency
 
@@ -72,7 +90,19 @@ bytes_per_token = sum(dense tensors per layer) + sum(all routed experts) * (top_
 - **GSM8K (5-shot, `n=25`)**: `284B @ 1.75 bpw` scores **`80.0% ± 8.2`** (`20/25`, identical at Top-4 and Top-6, and identical under `strict` and `flexible` extract) — matching `Llama-3-8B` (`79.6%`). Every single failure gets the intermediate reasoning right and collapses on the **final step** (dropping orders of magnitude like `70` for `70000`, or answering the wrong target quantity). `30B @ Q4_K_M` scores **`88.0% ± 6.6`** (`22/25`; `strict 84.0%`).
 - **TriviaQA (5-shot, `rc.nocontext`, `n=50`)**: Raw `lm-eval` `exact_match` gives `52.0% ± 7.1` (`26/50`) vs `60.0% ± 7.0` (`30/50`). A line-by-line audit of all 50 responses shows **both models suffered an identical `-12 pp` (`-6` question) string-matching penalty**, lifting audited accuracy to **`64.0%` (`32/50`) vs `72.0%` (`36/50`)**.
 
-**Read those as a tie, not a win.** `80 vs 88` and `52 vs 60` are the same 8-point gap in the same direction, which is weak evidence that it is real, and at `n=25` / `n=50` the standard error is about 7–8 points, which is not enough to call it. Pool the two tasks and it is `46/75 = 61.3%` against `52/75 = 69.3%`: still roughly one standard error. The claim worth defending is not "the 30B is more accurate". It is "the 284B is not more accurate, at 4.3× the cost per token", and that one does not need a significance test.
+All three models on the same two benchmarks:
+
+| Model | GSM8K 5-shot (`n=25`) | TriviaQA 5-shot (`n=50`) |
+|---|--:|--:|
+| 284B @ 1.75 bpw | **80.0 ± 8.2** | 52.0 ± 7.1 |
+| 30B-A3B @ `Q4` | **88.0 ± 6.6** | 60.0 ± 7.0 |
+| 8B @ `Q4` | 60.0 ± 9.8 | **66.0 ± 6.7** |
+
+**One gap in that table is bigger than its own error bar**: 30B over 8B on GSM8K, 28 points at 2.4 standard errors. Everything else is one standard error or less, including the 14-point TriviaQA gap where an 8B, one twelfth the size, out-scores the 284B.
+
+The ordering is worth writing down even though this sample cannot carry it: on the knowledge task, accuracy runs `66, 60, 52` as the compression ratio climbs. Facts live in the expert weights, and 1.75 bits is where they go. On the reasoning task the peak is at 30B, and dropping to 8B costs a real 28 points. Neither "bigger is better" nor "smaller is better" survives. The curve rises to about `17 GiB`, then flattens, and the only quantity that falls monotonically in every direction is speed.
+
+**Caveat on the 8B row**: it is a chat model driven through raw completion, because that is the only interface this server exposes. Its published 5-shot figure with the chat template is higher, so read `60%` as a floor and read the `66%` on TriviaQA the same way. The 284B and 30B were measured through the identical path, so the comparison is internally consistent even where it is not generous to the 8B.
 
 <details>
 <summary><strong>Deep Dive: Full 50-Sample TriviaQA Audit &amp; Top-K 6 vs 4 Regressions</strong></summary>
@@ -111,6 +141,7 @@ Measured via [`./scripts/gate_a/run_gate_a.sh`](./scripts/gate_a/run_gate_a.sh) 
 | Battery | Design capacity `53.13 Wh` (unit tested at `22%` health / `11.64 Wh`; runtime figures scaled to `53.13 Wh`) |
 | Model A | `Synchopate/DeepSeek-V4-Flash-0731-MaxQ-v4-64GB-CPU-GGUF` (`57.99 GiB`, 3 shards: `6 MB` metadata stub + `33.10 GiB` + `24.89 GiB`, 43 layers, 256 routed + 1 shared expert, `1.75 bpw`) |
 | Model B | `unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF` (`Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf`, `17.28 GiB`, SHA256 `6c997b8af...`, 48 layers, 128 routed experts, Top-8) |
+| Model C | `unsloth/Llama-3.1-8B-Instruct-GGUF` (`Llama-3.1-8B-Instruct-Q4_K_M.gguf`, `4.58 GiB`, dense 8B, 5-shot eval via `NousResearch/Meta-Llama-3.1-8B-Instruct` tokenizer) |
 | Binary &amp; Flags | `llama-server-modchip-linux-x86_64-avx512` (b12416), `-c 4096 -np 1 -b 2048 -ub 1024 -fa on -ctk q8_0 -ctv q8_0 -nr -t 4 -tb 4 --jinja` |
 
 </details>
