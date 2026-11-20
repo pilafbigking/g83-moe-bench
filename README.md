@@ -197,50 +197,57 @@ At `GSM8K ≥ 80%` and `≥ 1 tok/s`:
 OR = 57.99 GiB model / 37 GiB usable RAM = 1.57x        (0.39 GiB of model per dollar)
 ```
 
-### `PTY` — tokens per dollar per kilogram carried
+### `PTY` — tokens per dollar per kilogram carried (all-used pricing)
 
 ```
-PTY(T) = (v * 3600 * T) / [ C * (m + deficit/e) ]
+PTY(T) = (v * 3600 * T) / [ C_used * (m + deficit/e) ]
 
 v        sustained generation, tok/s        measured (G83) or BW-grounded 30B-A3B Q4 est. (peers)
 T        mission duration, hours            scenario (reported at 8 h; swept 2–24 h)
-C        price paid, USD                    street / receipt price
+C_used   used street price, USD             Nov 2026 secondary market (new MSRP shown for ref.)
 m        device mass, kg                    weighed (G83) or spec
 deficit  max(0, P*T - E_internal), kWh      spare battery carried for deficit beyond internal cell
 e        Li-ion pack specific energy        physical constant, 0.25 kWh/kg
 P        inference power, W                 RAPL package-0 (G83) or whole-kit estimate (peers)
 ```
 
-Capability defines the weight class (`30B-A3B` / `GSM8K ≥ 80%`) rather than multiplying the score:
+To avoid biasing a \$150 used ultrabook against brand-new retail pricing, **every system below is priced on Nov 2026 secondary-market street estimates**, with new MSRP included alongside as a reference column (including a same-year 2021 `M1 Pro` MacBook Pro). Capability defines the weight class (`30B-A3B` / `GSM8K ≥ 80%`) rather than multiplying the score:
 
-| Device | \$ | kg | W | 30B-class tok/s | carried kg | PTY |
-|---|--:|--:|--:|--:|--:|--:|
-| **dynabook G83/HS (used) · 30B** *(measured)* | **150** | **0.931** | 19.4 | 8.94 | 1.339 | **1,282** |
-| MacBook Air 13 M4 24 GB *(est.)* | 1,199 | 1.240 | 20.0 | ~45.0 | 1.665 | 649 |
-| MacBook Pro 14 M4 Pro 48 GB *(est.)* | 1,999 | 1.600 | 30.0 | ~75.0 | 2.270 | 476 |
-| Ryzen mini PC 32 GB *(est.)* | 600 | 1.400 | 35.0 | ~22.0 | 2.520 | 419 |
-| dynabook G83/HS (used) · 284B *(measured)* | 150 | 0.931 | 27.7 | 2.10 | 1.605 | 251 |
-| Gaming laptop RTX 4090 32 GB *(est.)* | 2,400 | 2.500 | 140.0 | ~70.0 | 6.580 | 128 |
+| Device | Used \$ (New ref) | kg | W | 30B-class tok/s | carried kg | **PTY (used)** | PTY (new ref) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **dynabook G83/HS (2021) · 30B** *(measured)* | **150** *(~1,500 '21)* | **0.931** | 19.4 | 8.94 | 1.339 | **1,282** | — |
+| MacBook Air 13 M4 24 GB *(est.)* | 950 *(1,399)* | 1.240 | 20.0 | ~45.0 | 1.665 | 819 | 556 |
+| MacBook Pro 14 M1 Pro 32 GB (2021) *(est.)* | 850 *(2,399 '21)* | 1.600 | 25.0 | ~40.0 | 2.122 | 639 | 226 |
+| Ryzen 7840HS mini PC 32 GB *(est.)* | 500 *(650)* | 1.400 | 35.0 | ~22.0 | 2.520 | 503 | 387 |
+| MacBook Pro 14 M4 Pro 48 GB *(est.)* | 2,100 *(2,399)* | 1.600 | 30.0 | ~75.0 | 2.270 | 453 | 397 |
+| dynabook G83/HS (2021) · 284B *(measured)* | 150 *(~1,500 '21)* | 0.931 | 27.7 | 2.10 | 1.605 | 251 | — |
+| Gaming laptop RTX 4090 32 GB *(est.)* | 1,900 *(2,800)* | 2.500 | 140.0 | ~70.0 | 6.580 | 161 | 109 |
 
 <div align="center">
-  <img src="./assets/pty_ranking.png" alt="Portable Token Yield across device classes" width="100%" />
+  <img src="./assets/pty_ranking.png" alt="Portable Token Yield across all-used device classes" width="100%" />
 </div>
 
-**Term-by-term decomposition (`G83-30B` vs. `MacBook Air M4` est.):**
+**Term-by-term decomposition (`G83-30B` vs. used `MacBook Air M4 24 GB` & same-year `2021 M1 Pro 32 GB`):**
 
 ```
-total PTY ratio        = 1.97x  (1,282 vs 649)
-  from price (1199/150)= 7.99x
-  from mass  (1.67/1.34)= 1.24x
-  from speed (8.94/45) = 0.20x  <-- the G83 is ~5x SLOWER
+vs. MacBook Air M4 24GB ($950 used est.) = 1.56x  (1,282 vs 819)
+  from used price (950/150)              = 6.33x
+  from mass       (1.67/1.34 kg)         = 1.24x
+  from speed      (8.94/45 tok/s)        = 0.20x  <-- the G83 is ~5x SLOWER
+
+vs. 2021 M1 Pro 32GB ($850 used est.)    = 2.01x  (1,282 vs 639)
+  from used price (850/150)              = 5.67x
+  from mass       (2.12/1.34 kg)         = 1.58x
+  from speed      (8.94/40 tok/s)        = 0.22x
 ```
 
-PTY does not claim a 2021 single-channel laptop is fast—it shows that even after crediting Apple Silicon (`~45–75 tok/s`) and Ryzen DDR5 (`~22 tok/s`) with realistic `30B-A3B Q4` (`1.92 GB/tok`) speeds, paying **\$150 used vs. \$1,199 new** leaves the G83 `1.97×` ahead (`1.76×–2.12×` across all 25 `(T, e)` combinations for `T ∈ {2,4,8,12,24} h` and `e ∈ {0.15…0.35} kWh/kg`). Using a **`30.0 W` whole-system power** sensitivity check for G83 (instead of `19.4 W` RAPL `package-0`) drops its score to **`1,023`** (`1.58×` vs MacBook Air at `T = 8 h`, `1.21×–2.07×` across the 25 scenarios).
+PTY does not claim a 2021 single-channel laptop is fast—it reflects a real depreciation asymmetry: off-lease business ultrabooks with socketed RAM lose ~90% of their original price in 4–5 years, whereas 24–32 GB Apple Silicon machines hold ~35–75% of MSRP on the secondary market. Even priced all-used (`$150` vs. `$950` for an M4 Air or `$850` for a same-year M1 Pro) and credited with `~40–75 tok/s` on `30B-A3B Q4`, the G83 stays `#1` across all 25 `(T, e)` cells at `19.4 W` package power (`1.40×–1.68×` lead over M4 Air). Under a **`30.0 W` whole-system power** sensitivity check (modeling DRAM + display draw alongside the CPU), its `8 h` lead narrows to **`1.25×`** (`PTY = 1,023`), winning `23/25` scenarios and dipping slightly behind the more power-efficient M4 Air (`0.96×`) only on an extreme `24 h` / `0.15 kWh/kg` low-density-battery carry.
 
 <details>
-<summary><strong>Assumptions Behind the Non-G83 Rows</strong></summary>
+<summary><strong>Pricing &amp; Bandwidth Assumptions Behind the Non-G83 Rows</strong></summary>
 
-G83 speed (`8.94` / `2.10`), `RAPL package-0` power (`19.4` / `27.7 W`), kitchen-scale mass (`0.931 kg`), and design battery (`53.13 Wh`) are measured/published for this unit. Every other row is an order-of-magnitude estimate for a `Qwen3-30B-A3B Q4` (`1.92 GB/tok`) workload grounded in published memory bandwidth (`~120 GB/s` M4, `~273 GB/s` M4 Pro, `~65–75 GB/s` DDR5-5600 mini PC) and thermal envelope—not measurements I performed on those machines. Comparing a \$150 used laptop against a \$1,199 new one obviously only makes sense when hardware budget is the binding constraint.
+- **Secondary-market & MSRP references (Nov 2026)**: eBay / Swappa / RefurbMe ranges—`MacBook Air M4 24GB/512GB` ~\$875–\$1,150 used (`$950` mid, `$1,399` retail MSRP; `$1,199` for BTO `256GB`); `2021 MacBook Pro 14 M1 Pro 32GB` ~\$750–\$950 used (`$850` mid, `$2,399` launch MSRP); `Ryzen 7840HS 32GB mini PC` ~\$450–\$550 pre-owned (`$500`, `$650` new); `MacBook Pro 14 M4 Pro 48GB` ~\$1,999–\$2,400 used (`$2,100`, `$2,399` 512GB base MSRP / `$2,799` 1TB); `RTX 4090 gaming laptop 32GB` ~\$1,750–\$2,400 used (`$1,900`, `$2,800` new ref). The `dynabook G83/HS` is discontinued (original 2021 corporate MSRP was ~\$1,500; bought used for `$150`).
+- **Speed & power estimates**: Only G83 speed (`8.94` / `2.10`), `RAPL package-0` power (`19.4` / `27.7 W`), kitchen-scale mass (`0.931 kg`), and design battery (`53.13 Wh`) are measured on-device. Every peer row is an order-of-magnitude estimate for a `Qwen3-30B-A3B Q4` (`1.92 GB/tok`) workload grounded in published memory bandwidth (`~120 GB/s` M4, `~200 GB/s` M1 Pro, `~273 GB/s` M4 Pro, `~65–75 GB/s` DDR5-5600 mini PC) and cooling limits.
 
 </details>
 
