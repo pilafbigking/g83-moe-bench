@@ -14,7 +14,7 @@ for name, p, mx in [("short_~20tok", "Explain what virtual memory paging is in L
     try:
         d = json.loads(r.stdout)
     except Exception:
-        print(name, "解析失败:", r.stdout[:200])
+        print(name, "JSON parse failed:", r.stdout[:200])
         continue
     tm = d.get("timings", {})
     pn = tm.get("prompt_n", 0)

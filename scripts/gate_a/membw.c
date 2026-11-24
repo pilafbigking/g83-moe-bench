@@ -1,8 +1,8 @@
-/* membw v2 — 内存带宽测量（修正串行依赖链）
- * v1 的 bug: s += a[i] 是 FP 加法链，每 8 字节等 4 周期延迟，测的是加法器不是内存
- * v2: 8 个独立整数累加器 + XOR，消除依赖链，-O3 展开
- * 编译: gcc -O3 -march=native -pthread -funroll-loops -o membw membw.c
- * 用法: ./membw read <GiB> <线程数> | ./membw copy <GiB> <线程数> | ./membw latency <GiB>
+/* membw v2 — Memory bandwidth microbenchmark (eliminating serial dependency chains)
+ * v1 bug: s += a[i] is an FP addition chain stalled by 4-cycle adder latency per 8 bytes.
+ * v2: 8 independent integer XOR accumulators unrolled with -O3 to saturate load ports.
+ * Compile: gcc -O3 -march=native -pthread -funroll-loops -o membw membw.c
+ * Usage: ./membw read <GiB> <threads> | ./membw copy <GiB> <threads> | ./membw latency <GiB>
  */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -25,7 +25,7 @@ typedef struct {
     int       id;
     uint64_t *src;
     uint64_t *dst;
-    size_t    n;      /* uint64 个数 */
+    size_t    n;      /* number of uint64 elements */
     double    bytes;
     double    dt;
 } worker_t;
@@ -37,7 +37,7 @@ static void pin(int id) {
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
 }
 
-/* 纯读：8 路独立 XOR，无依赖链，1 周期可发射一次 load */
+/* Read-only: 8-way independent XOR, no loop-carried dependency chain */
 static void *do_read(void *p) {
     worker_t *w = (worker_t *)p;
     pin(w->id);
@@ -66,11 +66,11 @@ static void *do_copy(void *p) {
     memcpy(w->dst, w->src, w->n * sizeof(uint64_t));
     double t1 = now_s();
     w->dt = t1 - t0;
-    w->bytes = (double)(w->n * sizeof(uint64_t)) * 2.0;  /* 读 + 写 */
+    w->bytes = (double)(w->n * sizeof(uint64_t)) * 2.0;  /* read + write */
     return NULL;
 }
 
-/* 指针追逐：测单次 DRAM 访问延迟（LLC 全失效） */
+/* Pointer chasing: measure single DRAM random access latency (misses LLC) */
 static void *do_latency(void *p) {
     worker_t *w = (worker_t *)p;
     pin(0);
@@ -88,13 +88,13 @@ static void *do_latency(void *p) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "用法: %s <read|copy|latency> <GiB> [线程数]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <read|copy|latency> <GiB> [threads]\n", argv[0]);
         return 2;
     }
     const char *mode = argv[1];
     double gib = atof(argv[2]);
     int nth = (argc >= 4) ? atoi(argv[3]) : 4;
-    if (nth < 1 || nth > 16) { fprintf(stderr, "线程数 1..16\n"); return 2; }
+    if (nth < 1 || nth > 16) { fprintf(stderr, "threads must be 1..16\n"); return 2; }
 
     size_t chunk = (size_t)(gib * 1024.0 * 1024.0 * 1024.0);
     size_t total = chunk * nth;
@@ -109,11 +109,11 @@ int main(int argc, char **argv) {
 
     uint64_t *a = (uint64_t *)mem;
     uint64_t *b = is_copy ? (uint64_t *)(mem + total) : NULL;
-    size_t per = chunk / sizeof(uint64_t);   /* 每线程的 uint64 个数 */
+    size_t per = chunk / sizeof(uint64_t);   /* uint64 elements per thread */
 
-    /* latency 模式：把页链成一个随机环，破坏预取 */
+    /* latency mode: link all pages into a single random permutation cycle to defeat prefetch */
     if (is_lat) {
-        size_t npages = per / 8;              /* 每页 8 个 uint64 */
+        size_t npages = per / 8;              /* 8 uint64 per 64B cache line / stride */
         size_t *ord = malloc(npages * sizeof(size_t));
         for (size_t i = 0; i < npages; i++) ord[i] = i;
         srand(12345);
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
             size_t j = (size_t)rand() % (i + 1);
             size_t t = ord[i]; ord[i] = ord[j]; ord[j] = t;
         }
-        /* 每页第一个 uint64 存下一页的元素下标，形成一条覆盖所有页的单环 */
+        /* store index of next page's first element in each slot */
         for (size_t i = 0; i < npages; i++) {
             uint64_t *cur = a + ord[i] * 8;
             *cur = (uint64_t)(ord[(i + 1) % npages] * 8);
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
         double t1 = now_s();
         double dt = t1 - t0;
         if (idx == 0xFFFFFFFFFFFFFFFFULL) fprintf(stderr, ".");
-        printf("latency  %4.1f GiB 工作集  %.1f ns/次  (%.1f M 随机访问/s)\n",
+        printf("latency  %4.1f GiB working set  %.1f ns/access  (%.1f M random accesses/s)\n",
                gib, dt / npages * 1e9, npages / dt / 1e6);
         munmap(mem, alloc);
         return 0;
@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nth; i++) { pthread_join(th[i], NULL); sum_bytes += w[i].bytes; }
     double wall = now_s() - wall0;
 
-    printf("%-4s  %4.1f GiB/线程 × %d线程  %6.2f GB/s  (%.2f s, %.1f GB/s/线程)\n",
+    printf("%-4s  %4.1f GiB/thread x %d threads  %6.2f GB/s  (%.2f s, %.1f GB/s/thread)\n",
            mode, gib, nth, sum_bytes / wall / 1e9, wall, sum_bytes / wall / 1e9 / nth);
 
     munmap(mem, alloc);

@@ -4,7 +4,7 @@
 
 <br/><br/>
 
-[![Hardware](https://img.shields.io/badge/Hardware-dynabook_G83%2FHS_(931g%2C_%24150)-133C55?style=flat-square)](./README.md#2-hardware-limits-and-why-dual-channel-didnt-work)
+[![Hardware](https://img.shields.io/badge/Hardware-dynabook_G83%2FHS_(931g%2C_~%24220_w%2F_40GiB)-133C55?style=flat-square)](./README.md#2-hardware-limits-and-why-dual-channel-didnt-work)
 [![RAM](https://img.shields.io/badge/RAM-40_GiB_(38_GiB_MemTotal%2C_0_Swap)-2E6F95?style=flat-square)](./README.md#2-hardware-limits-and-why-dual-channel-didnt-work)
 [![CPU](https://img.shields.io/badge/CPU-i5--1135G7_AVX--512_Intact-475569?style=flat-square)](./README.md#2-hardware-limits-and-why-dual-channel-didnt-work)
 [![Kernel](https://img.shields.io/badge/Linux-6.8_MGLRU_0x0007-133C55?style=flat-square)](./README.md#3-how-58-gib-runs-in-38-gib-mincore2-profile)
@@ -15,8 +15,8 @@
   <a href="#1-benchmarks-284b-vs-30b-vs-8b">Benchmarks</a> &middot;
   <a href="#2-hardware-limits-and-why-dual-channel-didnt-work">Hardware &amp; Bandwidth</a> &middot;
   <a href="#3-how-58-gib-runs-in-38-gib-mincore2-profile"><code>mincore(2)</code> Profile</a> &middot;
-  <a href="#4-what-150-actually-buys-orc-and-pty"><code>OR@C</code> &amp; <code>PTY</code></a> &middot;
-  <a href="#5-eleven-measurement-bugs-i-hit">11 Measurement Bugs</a> &middot;
+  <a href="#4-what-220-actually-buys-orc-and-pty"><code>OR@C</code> &amp; <code>PTY</code></a> &middot;
+  <a href="#5-twelve-measurement-bugs-i-hit">12 Measurement Bugs</a> &middot;
   <a href="#6-reproduce-and-limitations">Reproduce</a>
 </p>
 
@@ -24,7 +24,7 @@
 
 ---
 
-I bought a used **\$150** `dynabook G83/HS` (**931 g** on a kitchen scale, `40 GiB` physical RAM from `8 GiB` soldered + a `32 GiB` SO-DIMM, `38 GiB MemTotal` / `37 GiB` available, `0 B` swap) and tried running a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) on it. It runs at **2.10 tok/s** (Top-4) or **1.65 tok/s** (Top-6) without OOMing, swapping, or pruning experts.
+I put a `32 GiB` DDR4 SO-DIMM into a used `dynabook G83/HS` (**931 g** on a kitchen scale, `40 GiB` physical RAM from `8 GiB` soldered + `32 GiB` stick, `38 GiB MemTotal` / `37 GiB` available, `0 B` swap; **~\$220** total at late-2026 used prices, ~\$100 for the laptop and ~\$120 for the stick) and tried running a **57.99 GiB**, **284.33B-parameter MoE** (`DeepSeek-V4-Flash-0731 MaxQ-v4`, 1.75 bpw, all 256 experts intact) on it. It runs at **2.10 tok/s** (Top-4) or **1.65 tok/s** (Top-6) without OOMing, swapping, or pruning experts.
 
 Note up front: the engine is [Synchopate's `llama-modchip`](https://github.com/synchopate/llama-modchip) and the weights are his `MaxQ-v4` GGUF, not mine. I benchmarked that stack against two `Q4_K_M` baselines (`Qwen3-30B-A3B` and `Llama-3.1-8B`) to see whether cramming a 58 GiB model into 38 GiB of RAM makes sense once you look at speed, power, and accuracy.
 
@@ -78,7 +78,7 @@ The `1.75 bpw` label mostly covers the routed experts, which are only **16.0%** 
 Comparing all three speeds also splits out why `284B` runs `2.12×` slower than `8B` (`2.10` vs `4.46 tok/s`) on only `21%` more bytes (`5.58` vs `4.62 GB`):
 
 - Going from `8B` to `30B-A3B (-nr)` drops bus utilization from `96%` (`20.6 GB/s`) to `85%` (`18.2 GB/s`). Both are `Q4_K_M` and 100% resident in RAM with zero page faults, so that `-11 pp` gap is just the cost of Top-8-of-128 `mul_mat_id` sparse gathers.
-- Dropping from `85%` (`30B`) to `55%` (`284B K4`, `46%` at `K6`) stacks three things: sparser routing (Top-4 of 256), a `39%` RAM deficit (NVMe major faults), and `IQ1_S` / `IQ2_XXS` LUT decoding. For rough comparison, the engine author's fully resident `9950X` K6 run (`9.05 tok/s` on `~89 GB/s` DDR5) hits `6.03 × 9.05 / 89 = 61%` vs. `46%` here (`-15 pp` from paging).
+- Dropping from `85%` (`30B`) to `55%` (`284B K4`, `46%` at `K6`) stacks three things: sparser routing (Top-4 of 256), a `39%` page-cache shortfall (NVMe major faults), and `IQ1_S` / `IQ2_XXS` LUT decoding. For rough comparison, the engine author's fully resident `9950X` K6 run (`9.05 tok/s` on `~89 GB/s` DDR5) hits `6.03 × 9.05 / 89 = 61%` vs. `46%` here (`-15 pp` from paging).
 - Cutting `284B` from Top-6 to Top-4 trims bytes by `7.4%` (`6.03 → 5.58 GB`) while speeding up generation by `26.8%` (`1.65 → 2.10 tok/s`). The extra ~19 pp comes from cutting `mul_mat_id` dispatches by a third and faulting fewer experts.
 - First-token latency is the real usability gap: a 20-token prompt takes `~20 s` on `284B` (`~18 s` fixed intercept faulting experts off NVMe plus `0.10 s/tok` marginal prefill; `90.1 s` for 704 tokens), compared to `0.9 s` on `30B` and `1.5 s` on `8B`.
 
@@ -103,7 +103,7 @@ One caveat on the `8B` row: `Llama-3.1-8B-Instruct` ran through raw `/v1/complet
 
 1. `284B` (K6) false negatives (`26/50 → 32/50 = 64.0%`): `#04 ' breast cancer'` (gold `cancer`), `#08 ' Nikkei 225'` (gold `Nikkei`), `#21 ' Highway 61'` (gold `61`), `#37 ' “Stars on 45”'` (curly quotes broke EM), `#42 ' Manticore'` (missing article `A/The`), `#43 ' Cyclops'` (singular vs `Cyclopes`). Excluded single-letter `' J'` truncation on `J.G. Ballard` (`#34`).
 2. `30B-A3B` (Q4) false negatives (`30/50 → 36/50 = 72.0%`): `#00 ' Ross Bagdasarian Sr'` (real name of `David Seville`), `#08 ' Nikkei 225'`, `#15 ' George H'` (`George H.W. Bush` truncated at `.`; excluding `#15` gives `35/50 = 70.0%`), `#21 ' Highway 61'`, `#33 ' 48 Hrs'` (official title *48 Hrs.* stripped at `.`), `#40 ' The deep sea'` (gold `Underwater`/`Undersea`). Excluded `' H'` (`#02`) and `' J'` (`#34`).
-3. Top-K 6 → 4 on `284B` (20-prompt internal suite): coding prompts (LRU cache, SQL second-highest salary) stayed the same, while objective checks dropped `9/9 → 7/9`. The multi-digit addition `96,252 + 740,400 + 6,170,000` dropped carries even with a 1,200-token cap, ending on `7000000?` instead of `7,006,652`; and *"the second mouse gets the cheese"* translated `"second"` into Japanese as `遅い` (*slow mouse*) instead of `二番目` (*second*).
+3. Top-K 6 → 4 on `284B` (20-prompt internal suite): coding prompts (LRU cache, SQL second-highest salary) stayed the same, while objective checks dropped `9/9 → 7/9`. Summing the partial products of `1,234 × 5,678` (`96,252 + 740,400 + 6,170,000`) dropped carries even with a 1,200-token cap, ending on `7000000?` instead of `7,006,652`; and *"the second mouse gets the cheese"* translated `"second"` into Japanese as `遅い` (*slow mouse*) instead of `二番目` (*second*).
 
 </details>
 
@@ -127,7 +127,7 @@ Before loading any models, I measured the machine's bounds with [`./scripts/gate
 
 | Component | Measured / Observed Spec |
 |---|---|
-| Machine | `dynabook G83/HS` (`931 g` weighed on kitchen scale; ~$150 used) |
+| Machine | `dynabook G83/HS` (`931 g` weighed on kitchen scale; ~\$220 used total: ~\$100 base `8 GiB` laptop + ~\$120 used `32 GiB` DDR4-3200 SO-DIMM) |
 | CPU | Intel Core i5-1135G7 (4C/8T, Tiger Lake-U, `8 MiB` L3, `performance` governor + turbo) |
 | Memory | `40 GiB` physical (`32 GiB 2R` SO-DIMM + `8 GiB 1R` soldered, DDR4-3200; `38 GiB MemTotal` / `37 GiB` available), **0 B swap** |
 | Storage | Samsung `MZVLQ256HAJD-00000` 256 GB NVMe (`110 GiB` Linux ext4 partition) |
@@ -144,7 +144,7 @@ Before loading any models, I measured the machine's bounds with [`./scripts/gate
 
 ## 3. How 58 GiB runs in 38 GiB: `mincore(2)` profile
 
-With a 39% RAM deficit and 256 routed experts per layer, uniform routing over 200 tokens would touch $1 - (1 - 4/256)^{200} = 95.7\%$ of experts (`54 GiB` of `58 GiB`), leaving no room for the OS to hold a stable working set. In practice, generating 48 tokens added only **3,009–3,661 major page faults** on top of the `11,416` load faults.
+With `38 GiB MemTotal` (`40 GiB` physical minus firmware/iGPU carve-out, leaving ~39% of the `58 GiB` file out of page cache) and 256 routed experts per layer, uniform routing over 200 tokens would touch $1 - (1 - 4/256)^{200} = 95.7\%$ of experts (`54 GiB` of `58 GiB`), leaving no room for the OS to hold a stable working set. In practice, generating 48 tokens added only **3,009–3,661 major page faults** on top of the `11,416` load faults.
 
 After 20+ mixed prompts, I ran [`./scripts/inspect_residency.py`](./scripts/inspect_residency.py) (`mmap(PROT_READ, MAP_SHARED)` + `mincore(2)`, a 3-second read-only scan across all `43 × 256 = 11,008` expert slots):
 
@@ -180,9 +180,9 @@ After 20+ mixed prompts, I ran [`./scripts/inspect_residency.py`](./scripts/insp
 
 ---
 
-## 4. What \$150 actually buys: `OR@C` and `PTY`
+## 4. What \$220 actually buys: `OR@C` and `PTY`
 
-The `1.75-bit 284B` loses to `4-bit 30B` on every practical metric here. The laptop itself is still an odd piece of hardware: a socketed `32 GiB` DDR4 slot, active cooling, and intact AVX-512 at **`931 g`** for **\$150**. Most sub-1 kg laptops solder `8` or `16 GiB` and can't fit a `17 GiB` model at all.
+The `1.75-bit 284B` loses to `4-bit 30B` on every practical metric here. The laptop itself is still an odd piece of hardware: a socketed `32 GiB` DDR4 slot (`40 GiB` total physical RAM), active cooling, and intact AVX-512 at **`931 g`** for **~\$220** all-in (~\$100 for the used `8 GiB` laptop plus ~\$120 for a used `32 GiB` DDR4-3200 SO-DIMM, so in late 2026 the RAM stick costs more than the laptop). Most sub-1 kg laptops solder `8`, `16`, or `24 GiB` (like a `24 GB` M4 Air, which can't hold the 284B's `35.5 GiB` working set in RAM at all).
 
 Two simple ratios describe that without hand-tuned weights or binary gates:
 
@@ -191,7 +191,7 @@ Two simple ratios describe that without hand-tuned weights or binary gates:
 At `GSM8K ≥ 80%` and `≥ 1 tok/s`:
 
 ```
-OR = 57.99 GiB model / 37 GiB usable RAM = 1.57x        (0.39 GiB of model per dollar)
+OR = 57.99 GiB model / 37 GiB usable RAM = 1.57x        (0.26 GiB of model per dollar at $220)
 ```
 
 ### `PTY` (tokens per dollar per kilogram carried, all-used pricing)
@@ -208,63 +208,63 @@ e        Li-ion pack specific energy        physical constant, 0.25 kWh/kg
 P        inference power, W                 RAPL package-0 (G83) or whole-kit estimate (peers)
 ```
 
-Comparing a \$150 used laptop against brand-new retail prices isn't fair, so **every system below uses Nov 2026 secondary-market street estimates**, with new MSRP kept in a reference column (including a same-year 2021 `M1 Pro` MacBook Pro). Capability sets the class (`30B-A3B` / `GSM8K ≥ 80%`) instead of multiplying the score:
+Comparing a used laptop against brand-new retail prices isn't fair, so **every system below uses Nov 2026 secondary-market street estimates**, with new MSRP kept in a reference column (including a same-year 2021 `M1 Pro` MacBook Pro). Capability sets the class (`30B-A3B` / `GSM8K ≥ 80%`) instead of multiplying the score:
 
 | Device | Used \$ (New ref) | kg | W | 30B-class tok/s | carried kg | **PTY (used)** | PTY (new ref) |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| **dynabook G83/HS (2021) · 30B** *(measured)* | **150** *(~1,500 '21)* | **0.931** | 19.4 | 8.94 | 1.339 | **1,282** | — |
+| **dynabook G83/HS 40GB (2021) · 30B** *(measured)* | **220** *(~1,500 '21)* | **0.931** | 19.4 | 8.94 | 1.339 | **874** | — |
 | MacBook Air 13 M4 24 GB *(est.)* | 950 *(1,399)* | 1.240 | 20.0 | ~45.0 | 1.665 | 819 | 556 |
 | MacBook Pro 14 M1 Pro 32 GB (2021) *(est.)* | 850 *(2,399 '21)* | 1.600 | 25.0 | ~40.0 | 2.122 | 639 | 226 |
 | Ryzen 7840HS mini PC 32 GB *(est.)* | 500 *(650)* | 1.400 | 35.0 | ~22.0 | 2.520 | 503 | 387 |
 | MacBook Pro 14 M4 Pro 48 GB *(est.)* | 2,100 *(2,399)* | 1.600 | 30.0 | ~75.0 | 2.270 | 453 | 397 |
-| dynabook G83/HS (2021) · 284B *(measured)* | 150 *(~1,500 '21)* | 0.931 | 27.7 | 2.10 | 1.605 | 251 | — |
+| dynabook G83/HS 40GB (2021) · 284B *(measured)* | 220 *(~1,500 '21)* | 0.931 | 27.7 | 2.10 | 1.605 | 171 | — |
 | Gaming laptop RTX 4090 32 GB *(est.)* | 1,900 *(2,800)* | 2.500 | 140.0 | ~70.0 | 6.580 | 161 | 109 |
 
 <div align="center">
   <img src="./assets/pty_ranking.png" alt="Portable Token Yield across all-used device classes" width="100%" />
 </div>
 
-Term-by-term breakdown (`G83-30B` vs. used `MacBook Air M4 24 GB` and same-year `2021 M1 Pro 32 GB`):
+Term-by-term breakdown (`G83-30B` at `$220` vs. used `MacBook Air M4 24 GB` and same-year `2021 M1 Pro 32 GB`):
 
 ```
-vs. MacBook Air M4 24GB ($950 used est.) = 1.56x  (1,282 vs 819)
-  from used price (950/150)              = 6.33x
-  from mass       (1.67/1.34 kg)         = 1.24x
+vs. MacBook Air M4 24GB ($950 used est.) = 1.07x  (874 vs 819 at 19.4 W pkg; 0.85x at 30 W wall)
+  from used price (950/220)              = 4.32x
+  from mass       (1.665/1.339 kg)       = 1.24x
   from speed      (8.94/45 tok/s)        = 0.20x  <-- the G83 is ~5x SLOWER
 
-vs. 2021 M1 Pro 32GB ($850 used est.)    = 2.01x  (1,282 vs 639)
-  from used price (850/150)              = 5.67x
-  from mass       (2.12/1.34 kg)         = 1.58x
+vs. 2021 M1 Pro 32GB ($850 used est.)    = 1.37x  (874 vs 639 at 19.4 W pkg; 1.09x at 30 W wall)
+  from used price (850/220)              = 3.86x
+  from mass       (2.122/1.339 kg)       = 1.58x
   from speed      (8.94/40 tok/s)        = 0.22x
 ```
 
-A 2021 single-channel laptop isn't fast; this gap mostly comes from depreciation. Off-lease business ultrabooks with socketed RAM lose ~90% of their original price in 4–5 years, while 24–32 GB Apple Silicon machines hold 35–75% of MSRP. Because only the G83 column is measured (peer speed, price, and power are all estimates), here is what each peer would have to sustain on a `1.92 GB/tok` workload just to tie:
+In an earlier draft I priced the rig at \$150 (bare-laptop ballpark without counting the pulled `32 GiB` stick), which gave `PTY 1,282` at `19.4 W`. Counting ~\$100 for the used `8 GiB` laptop plus ~\$120 for a used `32 GB` DDR4-3200 stick at Nov 2026 prices puts the full kit at \$220, right between the two break-even thresholds against a used M4 Air (\$235 at `19.4 W` package power, \$187 at `30 W` estimated whole-system wall power). At `19.4 W` package power, G83 sits at `874` vs `819` (`1.07×` at `8 h`; `#1` in 19 of 25 `(T, e)` scenarios and `#2` in 6 cells at `12–24 h`). At `30 W` whole-system draw (adding DRAM and display), G83 drops to `697` (`0.85×` vs M4 Air at `8 h`, `#1` in 6 cells, `#2` in 11, `#3` in 8; still `1.09×` ahead of 2021 M1 Pro at `8 h`). Because peer rows are estimates on a `1.92 GB/tok` workload, here is what each peer would need just to tie the \$220 G83:
 
 | Tie requires | tok/s | of peak BW | verdict |
 |---|--:|--:|---|
-| `MacBook Air M4` vs G83 at `30 W` (PTY `1,023`) | `56.2` | `90%` of `120 GB/s` | inside ceiling; flips if Metal beats the `72%` implied by `45 tok/s` |
-| `MacBook Air M4` vs G83 at `19.4 W` (PTY `1,282`) | `70.4` | `113%` | above ceiling |
-| `2021 M1 Pro` vs `19.4 W` (`64.0` / `61%` vs `30 W`) | `80.3` | `77%` of `200 GB/s` | under ceiling, but well above published `30–45 tok/s` |
-| `M4 Pro` vs `19.4 W` (`169.3` / `119%` vs `30 W`) | `212` | `149%` of `273 GB/s` | out of reach under either G83 power figure |
+| `MacBook Air M4` vs G83 at `30 W` (PTY `697`) | `38.3` | `61%` of `120 GB/s` | inside ceiling (`~45 tok/s` est. wins on whole-system power) |
+| `MacBook Air M4` vs G83 at `19.4 W` (PTY `874`) | `48.0` | `77%` | essentially tied with `~45 tok/s` est. (within peer estimate noise) |
+| `2021 M1 Pro` vs `19.4 W` (`43.7` / `42%` vs `30 W`) | `54.7` | `53%` of `200 GB/s` | above published `30–45 tok/s` at `19.4 W`; close at `30 W` |
+| `M4 Pro` vs `19.4 W` (`115.4` / `81%` vs `30 W`) | `144.7` | `102%` of `273 GB/s` | above ceiling at `19.4 W`; well above `~75 tok/s` est. at `30 W` |
 
-At G83's measured `19.4 W` package power, tying the M4 Air needs `113%` of its memory bandwidth, which isn't possible. At a `30 W` whole-system wall estimate (adding DRAM and display draw), that drops to `90%` (`56.2 tok/s`), which is tight enough that the M4 Air is the row with the smallest margin. At `30 W`, G83 drops to PTY `1,023` (`1.25×` at `8 h`), winning `23` of `25` `(T, e)` scenarios and losing two (`24 h` on `0.15` and `0.20 kWh/kg` cells, `0.96×` and `0.99×`). The `6.3×` used-price gap is the main reason G83 stays ahead at all.
+At \$220, `tokens / ($ · kg)` against a used `24 GB` M4 Air is essentially a wash once you add DRAM and display power. What keeps the `dynabook` useful on its own terms is capacity per dollar under 1 kg: `40 GiB` of RAM under \$250, where a `24 GB` MacBook Air can't hold a `35.5 GiB` working set at all.
 
 <details>
 <summary><strong>Pricing &amp; bandwidth estimates behind the non-G83 rows</strong></summary>
 
-- Secondary-market &amp; MSRP references (Nov 2026, eBay / Swappa / RefurbMe ranges): `MacBook Air M4 24GB/512GB` ~\$875–\$1,150 used (`$950` mid, `$1,399` retail MSRP; `$1,199` for BTO `256GB`); `2021 MacBook Pro 14 M1 Pro 32GB` ~\$750–\$950 used (`$850` mid, `$2,399` launch MSRP); `Ryzen 7840HS 32GB mini PC` ~\$450–\$550 pre-owned (`$500`, `$650` new); `MacBook Pro 14 M4 Pro 48GB` ~\$1,999–\$2,400 used (`$2,100`, `$2,399` 512GB base MSRP / `$2,799` 1TB); `RTX 4090 gaming laptop 32GB` ~\$1,750–\$2,400 used (`$1,900`, `$2,800` new ref). The `dynabook G83/HS` is discontinued (2021 corporate MSRP was ~\$1,500; bought used for `$150`).
+- Secondary-market &amp; MSRP references (Nov 2026, eBay / Swappa / RefurbMe ranges): `MacBook Air M4 24GB/512GB` ~\$875–\$1,150 used (`$950` mid, `$1,399` retail MSRP; `$1,199` for BTO `256GB`); `2021 MacBook Pro 14 M1 Pro 32GB` ~\$750–\$950 used (`$850` mid, `$2,399` launch MSRP); `Ryzen 7840HS 32GB mini PC` ~\$450–\$550 pre-owned (`$500`, `$650` new); `MacBook Pro 14 M4 Pro 48GB` ~\$1,999–\$2,400 used (`$2,100`, `$2,399` 512GB base MSRP / `$2,799` 1TB); `RTX 4090 gaming laptop 32GB` ~\$1,750–\$2,400 used (`$1,900`, `$2,800` new ref). The `dynabook G83/HS` is discontinued (2021 corporate MSRP was ~\$1,500; ~\$100 used for the `8 GiB` base laptop plus ~\$120 for a Nov 2026 eBay used `1×32 GB DDR4-3200 SO-DIMM` = ~\$220 total).
 - Speed &amp; power estimates: only G83 speed (`8.94` / `2.10`), `RAPL package-0` power (`19.4` / `27.7 W`), kitchen-scale mass (`0.931 kg`), and design battery (`53.13 Wh`) were measured on-device. Peer rows are ballpark estimates for `Qwen3-30B-A3B Q4` (`1.92 GB/tok`) based on published memory bandwidth (`~120 GB/s` M4, `~200 GB/s` M1 Pro, `~273 GB/s` M4 Pro, `~65–75 GB/s` DDR5-5600 mini PC) and thermal limits.
 
 </details>
 
 ---
 
-## 5. Eleven measurement bugs I hit
+## 5. Twelve measurement bugs I hit
 
-Most of the weird numbers I saw early on turned out to be bugs in my own scripts:
+Most of the weird numbers I saw early on turned out to be bugs in my own scripts or accounting:
 
 <details open>
-<summary><strong>All 11 caught and fixed measurement bugs</strong></summary>
+<summary><strong>All 12 caught and fixed measurement bugs</strong></summary>
 
 | # | Bug | False Number Produced | Fix |
 |--:|---|---|---|
@@ -279,6 +279,7 @@ Most of the weird numbers I saw early on turned out to be bugs in my own scripts
 | 9 | `kill` matched absolute path while server used relative path | **Three "Qwen3" runs hit the stale 284B server** | Verified `ss -tlnp` PID `/proc/$PID/cmdline` before every run |
 | 10 | Fixed `220`-token cap on custom 20-prompt eval | Verbose Qwen3 truncated (`6/9`), concise 284B passed (`9/9`) | Excluded budget-sensitive custom suite from cross-model conclusions |
 | 11 | Omitted `--num_fewshot` on TriviaQA (`lm-eval` defaults to 0-shot) | `0.28` (0-shot) compared against `0.60` (5-shot) | Re-ran explicitly with `--num_fewshot 5` (`0.52`) |
+| 12 | Priced an earlier draft at \$150 (bare-laptop ballpark, omitting the pulled `32 GiB` SO-DIMM) | Inflated G83 `PTY` to `1,282` | Priced actual kit (~\$100 laptop + ~\$120 used `32 GB` stick = ~\$220 → `PTY` `874` pkg / `697` wall) |
 
 </details>
 
@@ -305,8 +306,8 @@ python3 ./scripts/prefill_probe.py http://127.0.0.1:8080
 # 5. Power sampling (RAPL package-0; psys domain unimplemented on this board)
 sudo bash ./scripts/power_probe.sh
 
-# 6. 20-prompt internal suite grader (single-model only, see §5 bug 10)
-python3 ./scripts/auto_grade.py            # reads ./scripts/eval_set.json
+# 6. 20-prompt internal suite grader (grades ~/eval/k{4,6}/*.json; prompts in ./scripts/eval_set.json)
+python3 ./scripts/auto_grade.py [eval_dir]
 
 # 7. Recompute the PTY table, attribution, 25-scenario sweep, and 30 W wall sensitivity
 python3 ./scripts/pty.py
@@ -319,7 +320,7 @@ python3 ./scripts/pty.py
 - `Llama-3.1-8B-Instruct` ran through `/v1/completions` without its chat template (same path as `284B` and `30B`), so treat its `60%` / `66%` scores as lower bounds.
 - RAPL `package-0` (`27.7 W` / `19.4 W`) excludes DRAM and display power (`psys` reads `0.1 W`), so real wall/battery draw is higher (checked via the `30 W` run in `pty.py`).
 - `mincore(2)` is a single post-eval warm snapshot with `lru_gen=0x0007`; I haven't run an `lru_gen=0` A/B yet.
-- In §4 PTY, only the G83 column is measured; peer speed, price, and power are estimates. Break-even shows the M4 Air and M1 Pro rows sit close enough under whole-system power that PTY mostly just says "price is ~6x lower and everything else is close."
+- In §4 PTY, only the G83 column is measured; peer speed, price, and power are estimates. Counting ~\$100 for the bare used laptop plus ~\$120 for a used `32 GB` DDR4 stick (\$220 total) puts G83 right between the \$187 and \$235 break-evens against a used M4 Air (`874` vs `819` at `19.4 W` package power, flipping to `697` vs `819` at `30 W` wall draw), so `PTY` is within peer estimation noise and G83's clear niche is `40 GiB` of RAM under \$250 and under 1 kg.
 - `284B` and `8B` ran `-nr`, while `30B` ran default repack during the main eval (`8.94 tok/s`). Since `-nr` later measured faster on `30B` (`9.47 tok/s`), the main table slightly understates `30B`.
 
 ---

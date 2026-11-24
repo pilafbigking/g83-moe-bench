@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-mincore(2) 张量级/专家级 Page Cache 驻留探测（G83 / DeepSeek-V4-Flash-MaxQ-v4）
-- 按张量类别统计
-- 按层区间统计（前/中/后）
-- 按文件顺序 40 个等分块统计（区分"尾部 recency" vs "热集驻留"）★关键
-- 43 x 256 专家槽位直方图 + CSV（画热力图）
-用法: python3 inspect_residency.py <gguf分片...>
+mincore(2) tensor- and expert-slot page cache residency profiler (Linux).
+- Residency by tensor class (shared_expert, attn+router, routed_experts, embd/output)
+- Residency by layer band (L00-13, L14-27, L28+)
+- 40 sequential file-offset chunks per shard (separates tail recency from hot-set pinning)
+- Per-expert residency histogram (43 x 256 = 11,008 slots) + CSV export
+Usage: python3 inspect_residency.py <gguf_shards...>
 """
 import ctypes, os, re, statistics, struct, sys
 from collections import defaultdict
@@ -110,7 +110,7 @@ def mincore_bm(path, fsize):
 def main():
     paths = sorted(sys.argv[1:])
     if not paths:
-        print("用法: python3 inspect_residency.py <gguf分片...>")
+        print("Usage: python3 inspect_residency.py <gguf_shards...>")
         sys.exit(1)
 
     cat = defaultdict(lambda: [0, 0])
@@ -127,9 +127,9 @@ def main():
         res, tot = sum(bm), len(bm)
         tot_res += res
         tot_pg += tot
-        print(f"[分片] {os.path.basename(p)[-20:]}  {res*PAGE_SIZE/2**30:6.2f} / {fsize/2**30:6.2f} GiB  ({100*res/tot:5.1f}%)  {nt} 张量")
+        print(f"[shard] {os.path.basename(p)[-20:]}  {res*PAGE_SIZE/2**30:6.2f} / {fsize/2**30:6.2f} GiB  ({100*res/tot:5.1f}%)  {nt} tensors")
 
-        # 40 等分块的驻留率 —— 区分尾偏 vs 热集
+        # 40 equal file-offset chunks to separate file-tail recency from hot-set pinning
         nch = 40
         csize = tot // nch
         ck = [100.0 * sum(bm[i*csize:(i+1)*csize]) / csize for i in range(nch)] if csize else []
@@ -155,7 +155,7 @@ def main():
             if c == "3_routed_exp":
                 ne = dims[-1] if (len(dims) >= 3 and dims[-1] > 1) else 256
                 if not dims_reported:
-                    print(f"  [样本] {name}  dims={dims}  -> 按 {ne} 个专家切分")
+                    print(f"  [sample] {name}  dims={dims}  -> split into {ne} experts")
                     dims_reported = True
                 step = (e - s) // ne
                 for x in range(ne):
@@ -167,15 +167,15 @@ def main():
                     slots[(L, x)][1] += ap1 - ap0
                 nl_ex = max(nl_ex, L + 1)
 
-    print(f"\n=== 总体驻留 {tot_res*PAGE_SIZE/2**30:.2f} / {tot_pg*PAGE_SIZE/2**30:.2f} GiB ({100*tot_res/tot_pg:.1f}%) ===")
+    print(f"\n=== Total residency {tot_res*PAGE_SIZE/2**30:.2f} / {tot_pg*PAGE_SIZE/2**30:.2f} GiB ({100*tot_res/tot_pg:.1f}%) ===")
 
-    print("\n--- 按类别 ---")
+    print("\n--- By tensor class ---")
     for c in sorted(cat):
         r, t = cat[c]
         if t:
             print(f"  {c:<14s} {r*PAGE_SIZE/2**30:6.2f} / {t*PAGE_SIZE/2**30:6.2f} GiB  ({100*r/t:5.1f}%)")
 
-    print("\n--- 层区间 x 类别 ---")
+    print("\n--- Layer band x tensor class ---")
     for zb in ("L00-13", "L14-27", "L28+"):
         parts = []
         for c in ("0_embd_head", "1_attn_router", "2_shared_exp", "3_routed_exp"):
@@ -185,20 +185,25 @@ def main():
         if parts:
             print(f"  {zb}:  " + "  ".join(parts))
 
-    print("\n--- 文件顺序 40 等分块驻留率（★判定 recency vs 热集）---")
+    print("\n--- 40 sequential file chunks (tail recency vs hot-set pinning) ---")
     for si, ck in enumerate(chunks_all):
         line = " ".join(f"{v:3.0f}" for v in ck)
-        print(f"  片{si+1}: {line}")
+        print(f"  Shard {si+1}: {line}")
 
-    # 专家直方图
-    bins = [(0.0, "0%   全在盘"), (0.001, "1-25% "), (0.25, "25-75%"), (0.75, "75-99%"), (1.0, "=100% 全常驻")]
+    bins = [
+        (0.0,   "0%   on disk"),
+        (0.001, "1-25% "),
+        (0.25,  "25-75%"),
+        (0.75,  "75-99%"),
+        (1.0,   "=100% resident"),
+    ]
     cnt = defaultdict(int)
     ratios = []
     for (L, x), (r, t) in slots.items():
         f = r / t if t else 0.0
         ratios.append(f)
         if f <= 0.0:
-            cnt["0%   全在盘"] += 1
+            cnt["0%   on disk"] += 1
         elif f < 0.25:
             cnt["1-25% "] += 1
         elif f < 0.75:
@@ -206,17 +211,17 @@ def main():
         elif f < 1.0:
             cnt["75-99%"] += 1
         else:
-            cnt["=100% 全常驻"] += 1
+            cnt["=100% resident"] += 1
 
-    n = len(ratios)
-    print(f"\n--- 专家槽位驻留直方图（{n} 个槽位，{nl_ex} 层）---")
+    n_slots = len(ratios)
+    print(f"\n--- Routed expert residency histogram ({n_slots} slots, {nl_ex} layers) ---")
     for _, label in bins:
         v = cnt[label]
-        bar = "#" * int(50 * v / max(1, n))
-        print(f"  {label:<12s} {v:6d} ({100*v/max(1,n):5.1f}%) {bar}")
+        bar = "#" * int(50 * v / max(1, n_slots))
+        print(f"  {label:<15s} {v:6d} ({100*v/max(1,n_slots):5.1f}%) {bar}")
     if ratios:
-        mean = sum(ratios) / n
-        print(f"  平均驻留率 {100*mean:.1f}%   完全常驻 {cnt['=100% 全常驻']}   完全在盘 {cnt['0%   全在盘']}")
+        mean = sum(ratios) / n_slots
+        print(f"  Mean residency {100*mean:.1f}%   fully resident {cnt['=100% resident']}   on disk {cnt['0%   on disk']}")
 
     out = os.path.expanduser("~/expert_residency_map.csv")
     with open(out, "w") as f:
@@ -224,33 +229,32 @@ def main():
         for (L, x) in sorted(slots):
             r, t = slots[(L, x)]
             f.write(f"{L},{x},{r},{t},{r/t:.4f}\n")
-    print(f"\n逐槽位 CSV: {out}")
+    print(f"\nPer-slot CSV: {out}")
 
-    # ---- 自动判决（V2.1 计划只写了甲/乙两分支，这里补第三支）----
     layers = sorted({L for (L, _) in slots})
     lmean = [statistics.mean(v for (L2, _), (r, t) in slots.items() if L2 == L and (v := r / t) >= 0)
              for L in layers]
-    n = len(layers)
-    mx, my = (n - 1) / 2, statistics.mean(lmean)
-    num = sum((i - mx) * (lmean[i] - my) for i in range(n))
-    den = (sum((i - mx) ** 2 for i in range(n)) * sum((v - my) ** 2 for v in lmean)) ** 0.5 or 1
+    n_layers = len(layers)
+    mx, my = (n_layers - 1) / 2, statistics.mean(lmean)
+    num = sum((i - mx) * (lmean[i] - my) for i in range(n_layers))
+    den = (sum((i - mx) ** 2 for i in range(n_layers)) * sum((v - my) ** 2 for v in lmean)) ** 0.5 or 1
     corr = num / den
 
     front = sum(sum(c[:len(c) // 4]) / max(1, len(c) // 4) for c in chunks_all) / max(1, len(chunks_all))
     back = sum(sum(c[-len(c) // 4:]) / max(1, len(c) // 4) for c in chunks_all) / max(1, len(chunks_all))
-    bimodal = (cnt["=100% 全常驻"] + cnt["0%   全在盘"]) / max(1, n_slots if (n_slots := len(ratios)) else 1)
+    bimodal = (cnt["=100% resident"] + cnt["0%   on disk"]) / max(1, n_slots)
 
-    print("\n=== 自动判决 ===")
-    print(f"  层序 vs 驻留率 相关 r = {corr:+.3f}（接近 +1 才是文件尾偏）")
-    print(f"  文件前 1/4 块 {front:.0f}%  vs 后 1/4 块 {back:.0f}%  (差 {back-front:+.0f} pt)")
-    print(f"  双峰占比（0% 或 100%）{100*bimodal:.1f}%")
+    print("\n=== Verdict ===")
+    print(f"  Layer order vs residency corr r = {corr:+.3f} (near +1 indicates file-tail recency)")
+    print(f"  First quarter of file {front:.0f}% vs last quarter {back:.0f}% (diff {back-front:+.0f} pp)")
+    print(f"  Bimodal share (0% or 100%) {100*bimodal:.1f}%")
     if corr > 0.6 and (back - front) > 25:
-        print("  → 情况甲：文件尾部 recency 主导。浅层与中层是同一次加载被挤出去的。")
+        print("  -> Case A: file-tail recency dominates; earlier layers were evicted by sequential loading.")
     elif bimodal > 0.6:
-        print("  → 情况乙：专家粒度淘汰（全热或全冷），僵尸专家假说成立。")
+        print("  -> Case B: whole-expert eviction dominates (all-hot vs all-cold zombie experts).")
     else:
-        print("  → 情况丙：**层结构主导 + 页粒度部分淘汰**。")
-        print("     既不是纯 recency，也不是僵尸专家；冷热按层成段分布，层内按页零散残留。")
+        print("  -> Case C: layer-band structure + page-granularity partial eviction.")
+        print("     Neither pure file-tail recency nor whole-expert eviction.")
 
 
 if __name__ == "__main__":
